@@ -170,7 +170,8 @@ async function clusterShovels(c) {
 async function queueAcross(name) {
   return Promise.all((config.clusters || []).map(async (c) => {
     try {
-      const qs = await rmq(c, 'GET', `/queues?columns=name,vhost,type,messages,consumers,message_stats&name=${enc('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')}&use_regex=true`);
+      // The management API's name= filter only applies together with pagination, so match the exact name here.
+      const qs = (await rmq(c, 'GET', '/queues?columns=name,vhost,type,messages,consumers,message_stats', 15000)).filter((x) => x.name === name);
       let shovel = null;
       try {
         const sh = await rmq(c, 'GET', '/shovels');
