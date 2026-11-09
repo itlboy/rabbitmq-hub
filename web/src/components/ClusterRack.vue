@@ -13,36 +13,38 @@ function unit(n) {
 
 <template>
   <article role="button" tabindex="0" :aria-pressed="selected" @click="$emit('pick')" @keydown.enter.space.prevent="$emit('pick')"
-    class="rack min-w-0 cursor-pointer overflow-hidden rounded-xl border bg-panel text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.45)]"
+    class="rack flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-panel text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.45)]"
     :class="selected ? 'border-ink shadow-[0_0_0_1px_var(--ink)]' : 'border-rule'" :style="{ '--i': index }">
-    <header class="flex items-center gap-2.5 border-b border-dashed border-rule px-4 py-3" :class="cluster.ok ? 'bg-panel-2' : 'bg-stop-soft'">
+    <header class="flex items-center gap-2 border-b border-dashed border-rule px-3.5 py-2.5" :class="cluster.ok ? 'bg-panel-2' : 'bg-stop-soft'">
       <span class="led" :class="!cluster.ok && 'off'"></span>
-      <h3 class="m-0 text-[15px] font-bold tracking-tight">{{ cluster.name }}</h3>
+      <h3 class="m-0 truncate text-[14px] font-bold tracking-tight">{{ cluster.name }}</h3>
       <span class="ml-auto whitespace-nowrap font-mono text-[11px] text-ink-3">{{ cluster.version ? 'v' + cluster.version : '' }}</span>
     </header>
 
-    <div class="grid gap-4 p-4">
-      <p v-if="cluster.role" class="-mt-1 m-0 text-[13px] text-ink-2">{{ cluster.role }}</p>
+    <div class="flex flex-1 flex-col gap-3 p-3.5">
+      <p v-if="cluster.role" class="m-0 truncate text-[12px] text-ink-2" :title="cluster.role">{{ cluster.role }}</p>
 
-      <div class="grid gap-1.5">
-        <span class="label">waiting</span>
-        <span class="font-mono text-[32px] font-semibold leading-none tracking-[-.04em] tabular-nums max-sm:text-[28px]">
-          {{ fmt(cluster.messages?.messages) }}<small class="ml-1.5 text-xs font-normal tracking-normal text-ink-3">msg</small>
-        </span>
-        <span class="flex gap-4 font-mono text-xs text-ink-2">
+      <div class="flex items-end justify-between gap-3">
+        <div class="min-w-0">
+          <span class="label">waiting</span>
+          <div class="font-mono text-[26px] font-semibold leading-none tracking-[-.04em] tabular-nums">
+            {{ fmt(cluster.messages?.messages) }}<small class="ml-1 text-[11px] font-normal tracking-normal text-ink-3">msg</small>
+          </div>
+        </div>
+        <div class="grid shrink-0 justify-items-end font-mono text-[11px] leading-snug text-ink-2">
           <span>in <b class="font-semibold" :class="(cluster.rates?.publish || 0) > 0 ? 'text-signal' : 'text-ink'">{{ rate(cluster.rates?.publish) }}</b>/s</span>
           <span>out <b class="font-semibold text-ink">{{ rate(cluster.rates?.deliver) }}</b>/s</span>
-        </span>
+        </div>
       </div>
 
       <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule">
-        <div class="min-w-0 px-2.5 py-2"><dt class="label">queues</dt><dd class="m-0 font-mono text-[15px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
-        <div class="min-w-0 px-2.5 py-2"><dt class="label">conns</dt><dd class="m-0 font-mono text-[15px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
-        <div class="min-w-0 px-2.5 py-2"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[15px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">queues</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">conns</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
       </dl>
 
-      <div v-if="cluster.nodes?.length" class="grid gap-1.5">
-        <div v-for="n in cluster.nodes" :key="n.name" class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 font-mono text-[11px]"
+      <div v-if="cluster.nodes?.length" class="grid gap-1">
+        <div v-for="n in cluster.nodes" :key="n.name" class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[11px]"
           :class="n.running ? 'text-ink-2' : 'text-stop'"
           :title="n.running ? `RAM ${bytes(n.mem_used)} / ${bytes(n.mem_limit)} watermark · disk free ${bytes(n.disk_free)}` : 'node stopped'">
           <span class="flex min-w-0 items-center gap-2 text-ink">
@@ -56,7 +58,7 @@ function unit(n) {
         </div>
       </div>
 
-      <div v-if="cluster.problems?.length" class="grid rounded-r-md border-l-[3px] border-stop bg-stop-soft px-3 py-2 font-mono text-xs leading-relaxed text-stop">
+      <div v-if="cluster.problems?.length" class="mt-auto grid rounded-r-md border-l-[3px] border-stop bg-stop-soft px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-stop">
         <span v-for="p in cluster.problems" :key="p">! {{ p }}</span>
       </div>
     </div>

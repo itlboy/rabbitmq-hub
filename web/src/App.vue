@@ -108,13 +108,13 @@ onBeforeUnmount(() => clearInterval(timer));
     </div>
   </header>
 
-  <main class="gutter mx-auto grid max-w-[1480px] grid-cols-[minmax(0,1fr)] gap-6 pt-6 pb-12">
+  <main class="gutter mx-auto grid max-w-[1480px] grid-cols-[minmax(0,1fr)] gap-4 pt-4 pb-10">
     <p v-if="fatal" class="m-0 font-mono text-[13px] text-stop">{{ fatal }}</p>
     <template v-else>
       <FlowStrip :clusters="clusters" @pick="pick" />
       <p v-if="clustersError" class="m-0 font-mono text-[13px] text-stop">{{ clustersError }}</p>
       <p v-else-if="!clusters.length" class="m-0 text-ink-3">Loading clusters…</p>
-      <section class="grid grid-cols-[repeat(auto-fill,minmax(min(340px,100%),1fr))] items-start gap-4" aria-label="Clusters">
+      <section class="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Clusters">
         <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :selected="c.id === selectedId" @pick="pick(c.id)" />
       </section>
       <QueueTable :cluster="selected" :queues="queues" :can-purge="canPurge" :error="queuesError" @purge="openPurge" />
