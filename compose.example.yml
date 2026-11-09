@@ -1,0 +1,30 @@
+# Example: run the hub next to RabbitMQ and expose it only through a Cloudflare Tunnel.
+# Create a tunnel whose public hostname points to http://127.0.0.1:8088, and an Access application for that hostname.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  rabbitmq-hub:
+    image: ghcr.io/itlboy/rabbitmq-hub:latest   # pin a sha-xxxxxxx or vX.Y.Z tag in production
+    restart: unless-stopped
+    network_mode: host            # reach 127.0.0.1:15672 and private/VPN addresses of other clusters
+    environment:
+      PORT: "8088"
+      BIND: 127.0.0.1             # keep it on loopback: only cloudflared should reach it
+    env_file: ./hub.env           # RABBITMQ_USER, RABBITMQ_PASS, AUDIT_WEBHOOK_URL
+    volumes:
+      - ./config.json:/app/config.json:ro
+    mem_limit: 128m
+    logging: *logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    network_mode: host
+    command: ["tunnel", "--no-autoupdate", "run"]
+    env_file: ./tunnel.env        # TUNNEL_TOKEN
+    mem_limit: 128m
+    logging: *logging

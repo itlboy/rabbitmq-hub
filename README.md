@@ -1,0 +1,101 @@
+# RabbitMQ Hub
+
+A tiny, dependency-free dashboard to watch several RabbitMQ clusters from one page — and empty a queue when you have to.
+
+- **Clusters at a glance** — health dot, version, nodes (RAM / disk / alarms / partitions), queued messages, publish & get rates, connections, shovel status.
+- **Queues per cluster** — filter, sort by any column, hide minor queues (e.g. delay queues) with a regex, auto-refresh every 10 s.
+- **Empty a queue** — admins only, the queue name must be typed again, and purge can be disabled per cluster. Every purge is logged and can be posted to a webhook.
+- **No database** — users, roles and clusters live in one `config.json`, hot-reloaded when it changes.
+- **No runtime dependencies** — `server.js` uses only the Node.js 26 standard library. The UI is Vue 3 + Tailwind CSS 4, built once with Vite into `dist/`.
+- **Light / dark / system theme**, remembered per browser.
+
+## How auth works
+
+The hub is designed to sit behind **[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/)** (e.g. Google login):
+
+1. Access authenticates the user and forwards the request with a signed `Cf-Access-Jwt-Assertion` JWT.
+2. The hub verifies that JWT itself — signature against your team's JWKS, audience (`aud`), expiry — and reads the email.
+   A plain email header is never trusted. No/invalid JWT → `401`.
+3. The email is matched against `config.json`: `admins` (view + purge) or `viewers` (view only); `*@domain` matches a whole domain.
+   Anyone else → `403`.
+
+Bind the hub to localhost and expose it only through a Cloudflare Tunnel, so the Access check cannot be bypassed.
+
+## Configuration
+
+Copy `config.example.json` to `config.json`:
+
+| Key | Meaning |
+|---|---|
+| `title` | Page title (optional) |
+| `public_origin` | Public URL of the hub; POSTs from another origin are rejected |
+| `access.team_domain` | `<team>.cloudflareaccess.com` |
+| `access.aud` | AUD tag of the Access application |
+| `users.admins` / `users.viewers` | Emails or `*@domain` |
+| `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `hide_queue_pattern` (regex, optional), `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional) |
+
+Environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RABBITMQ_USER` / `RABBITMQ_PASS` | — | Management API credentials (same user on every cluster). `RABBITMQ_DEFAULT_USER/PASS` also accepted |
+| `AUDIT_WEBHOOK_URL` | — | Optional webhook for purge audit (Discord-compatible `content`, Slack-compatible `text`) |
+| `PORT` / `BIND` | `8088` / `127.0.0.1` | Listen address |
+| `HUB_CONFIG` | `./config.json` | Config path |
+| `HUB_TIMEZONE` | `UTC` | Timezone used in audit messages |
+| `HUB_DEV_EMAIL` | — | **Local testing only**: skips JWT verification and acts as this email. Never set it in production |
+
+The management user needs the `monitoring` tag to read, plus permissions on the vhost to purge.
+
+## Build and run
+
+```bash
+npm install                          # dev tools only: Vite, Vue, Tailwind
+npm run build                        # → dist/
+cp config.example.json config.json   # then edit
+RABBITMQ_USER=hub RABBITMQ_PASS=secret npm start
+```
+
+The server only needs `server.js`, `dist/` and `config.json` at runtime — no `node_modules`.
+
+### Docker
+
+Images for `linux/amd64` and `linux/arm64` are built by GitHub Actions and published to `ghcr.io/itlboy/rabbitmq-hub`
+— a release tag `vX.Y.Z` publishes `X.Y.Z`, `X.Y` and `latest` (always the newest release); pushes to `main` publish `sha-<short>` only.
+
+Release: `npm version patch` (or `minor`/`major`) then `git push --follow-tags`.
+
+```bash
+docker run -d --network host -v $PWD/config.json:/app/config.json:ro \
+  -e RABBITMQ_USER=hub -e RABBITMQ_PASS=secret ghcr.io/itlboy/rabbitmq-hub:latest
+```
+The image binds to `127.0.0.1` by default so that only a local `cloudflared` can reach it. With bridge networking,
+set `BIND=0.0.0.0` and publish the port on loopback only (`-p 127.0.0.1:8088:8088`).
+Next to `cloudflared` with Docker Compose: [`compose.example.yml`](compose.example.yml).
+
+### Develop
+
+```bash
+npm run dev:mock     # UI with example data, no RabbitMQ or Cloudflare needed
+# or against real clusters:
+HUB_DEV_EMAIL=alice@example.com RABBITMQ_USER=guest RABBITMQ_PASS=guest npm start   # API on :8088
+npm run dev          # Vite on :5173, proxies /api to :8088
+```
+`HUB_DEV_EMAIL` skips JWT verification — local use only.
+
+Layout: `web/src/App.vue` (page), `web/src/components/` (`FlowStrip`, `ClusterRack`, `QueueTable`, `PurgeDialog`, `ThemeToggle`),
+`web/src/style.css` (design tokens for both themes, exposed to Tailwind as `bg-panel`, `text-ink-2`, `text-signal`…).
+
+## API
+
+| Method | Path | Who |
+|---|---|---|
+| `GET` | `/healthz` | anyone (no auth) |
+| `GET` | `/api/me` | viewer |
+| `GET` | `/api/clusters` | viewer |
+| `GET` | `/api/clusters/:id/queues` | viewer |
+| `POST` | `/api/clusters/:id/purge` `{vhost, queue, confirm}` | admin, `confirm` must equal `queue` |
+
+## License
+
+MIT
