@@ -15,7 +15,7 @@ ENV NODE_ENV=production \
     PORT=8088 \
     BIND=127.0.0.1 \
     HUB_CONFIG=/app/config.json
-COPY server.js ./
+COPY server.js package.json ./
 COPY --from=build /src/dist ./dist
 USER node
 EXPOSE 8088

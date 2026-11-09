@@ -8,6 +8,7 @@ import ClusterRack from './components/ClusterRack.vue';
 import QueueTable from './components/QueueTable.vue';
 import PurgeDialog from './components/PurgeDialog.vue';
 import QueueDrawer from './components/QueueDrawer.vue';
+import NodeDrawer from './components/NodeDrawer.vue';
 
 const REFRESH = 10;
 const me = ref(null);
@@ -22,6 +23,7 @@ const shovels = ref([]);
 const shovelsError = ref('');
 const shovelsLoading = ref(false);
 const openQueueName = ref('');
+const openNodeRef = ref(null);   // { cluster, node }
 const updatedAt = ref('');
 const tick = ref(0);
 const paused = ref(false);
@@ -36,6 +38,9 @@ const colors = computed(() => Object.fromEntries(clusters.value.map((c, i) => [c
 const unhealthy = computed(() => clusters.value.filter((c) => !c.ok));
 const canPurge = computed(() => me.value?.role === 'admin' && !!selected.value?.allow_purge);
 const openQueue = computed(() => queues.value.find((q) => q.name === openQueueName.value) || null);
+const nodeCluster = computed(() => openNodeRef.value && clusters.value.find((c) => c.id === openNodeRef.value.cluster));
+const openNode = computed(() => nodeCluster.value?.nodes?.find((n) => n.name === openNodeRef.value.node) || null);
+function showNode(clusterId, name) { openQueueName.value = ''; writeHash(); openNodeRef.value = { cluster: clusterId, node: name }; }
 
 /* ---- deep links: #cluster or #cluster/queue (plain hash only) ---- */
 function readHash() {
@@ -80,7 +85,7 @@ function pick(id, queueName = '') {
   writeHash(); loadQueues(); loadShovels();
 }
 function setTab(t) { tab.value = t; shovels.value = []; loadShovels(); }
-function openQ(name) { openQueueName.value = name; tab.value = 'queues'; writeHash(); }
+function openQ(name) { openNodeRef.value = null; openQueueName.value = name; tab.value = 'queues'; writeHash(); }
 function closeQ() { openQueueName.value = ''; writeHash(); }
 function jumpToTrouble() { const c = unhealthy.value[0]; if (c) { pick(c.id); if (c.shovels?.bad?.length) setTab('shovels'); } }
 
@@ -165,7 +170,7 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
       <p v-if="clustersError" class="m-0 font-mono text-[13px] text-stop">{{ clustersError }}</p>
       <p v-else-if="!clusters.length" class="m-0 text-ink-3">Loading clusters…</p>
       <section class="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Clusters">
-        <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :color="colors[c.id]" :selected="c.id === selectedId" @pick="pick(c.id)" />
+        <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :color="colors[c.id]" :selected="c.id === selectedId" @pick="pick(c.id)" @node="(n) => showNode(c.id, n)" />
       </section>
       <QueueTable :cluster="selected" :color="colors[selectedId]" :queues="queues" :can-purge="canPurge" :error="queuesError" :tab="tab" :shovels="shovels"
         :shovels-error="shovelsError" :shovels-loading="shovelsLoading" :active-queue="openQueueName"
@@ -173,6 +178,7 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
     </template>
   </main>
 
+  <NodeDrawer :node="openNode" :cluster="nodeCluster" :color="colors[openNodeRef?.cluster]" @close="openNodeRef = null" />
   <QueueDrawer :queue="openQueue" :cluster="selected" :me="me" @close="closeQ" @pick="pick" />
 
   <PurgeDialog :target="purgeTarget" :cluster-name="selected?.name" :busy="purgeBusy" :error="purgeError"

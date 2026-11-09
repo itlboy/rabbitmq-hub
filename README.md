@@ -10,6 +10,9 @@ A tiny, dependency-free dashboard to watch several RabbitMQ clusters from one pa
 - **Read messages** — peek at up to 10 messages (requeued, logged); admins and `peekers` only, can be disabled per cluster.
 - **Deep links** — `#cluster` or `#cluster/queue`; the health badge jumps to the first cluster that needs attention.
 - **A colour per cluster**, messages with no consumer flagged in red.
+- **Node details** — click a node for memory / disk / CPU load explained in plain words (what happens at each limit).
+- **Health endpoint** — `GET /api/health` returns `ok | degraded | down` for the whole system (HTTP 200 / 503), ready for any monitor.
+- **For AI agents** — a read-only **MCP server** at `/mcp` and a JSON API (`GET /api` lists it), authenticated with a Cloudflare Access service token.
 - **Empty a queue** — admins only, the queue name must be typed again, and purge can be disabled per cluster. Every purge is logged and can be posted to a webhook.
 - **No database** — users, roles and clusters live in one `config.json`, hot-reloaded when it changes.
 - **No runtime dependencies** — `server.js` uses only the Node.js 26 standard library. The UI is Vue 3 + Tailwind CSS 4, built once with Vite into `dist/`.
@@ -39,6 +42,7 @@ Copy `config.example.json` to `config.json`:
 | `access.aud` | AUD tag of the Access application |
 | `users.admins` / `users.peekers` / `users.viewers` | Emails or `*@domain`. Admins: view + read messages + purge. Peekers: view + read messages. Viewers: view only |
 | `peek_max` | Max messages per read (default 10, max 50) |
+| `service_tokens` | `{ "<Access service token client id>": "viewer" \| "peeker" \| "admin" }` — machine access (AI agents, monitors). Unlisted tokens get 403 |
 | `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `allow_peek` (default true), `hide_queue_pattern` (regex, optional), `warn_messages` (default 1000) / `warn_threshold` (`{queue: n}`) for row highlighting, `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional) |
 
 Environment variables:
@@ -93,11 +97,28 @@ npm run dev          # Vite on :5173, proxies /api to :8088
 Layout: `web/src/App.vue` (page), `web/src/components/` (`FlowStrip`, `ClusterRack`, `QueueTable`, `PurgeDialog`, `ThemeToggle`),
 `web/src/style.css` (design tokens for both themes, exposed to Tailwind as `bg-panel`, `text-ink-2`, `text-signal`…).
 
+## AI agents (MCP)
+
+`POST /mcp` speaks MCP over Streamable HTTP (JSON responses, stateless). Tools: `system_health`, `list_clusters`, `list_queues`,
+`queue_across`, `list_shovels`, `read_messages` (admin/peeker only, logged). **Purging is not exposed over MCP.**
+
+1. In Cloudflare Zero Trust create a service token and add a *Service Auth* policy for it on the hub's Access application.
+2. Map its client id in `config.json`: `"service_tokens": { "abc123.access": "viewer" }`.
+3. Point the MCP client at `https://<hub>/mcp` with headers `CF-Access-Client-Id` and `CF-Access-Client-Secret`.
+
+```json
+{ "mcpServers": { "rabbitmq": { "type": "http", "url": "https://rabbitmq.example.com/mcp",
+  "headers": { "CF-Access-Client-Id": "abc123.access", "CF-Access-Client-Secret": "…" } } } }
+```
+
 ## API
 
 | Method | Path | Who |
 |---|---|---|
-| `GET` | `/healthz` | anyone (no auth) |
+| `GET` | `/healthz` | anyone (no auth) — process liveness only |
+| `GET` | `/api` | viewer — endpoint list |
+| `GET` | `/api/health` | viewer — whole-system status, 200 ok / 503 degraded or down |
+| `POST` | `/mcp` | viewer (tools), peeker/admin for `read_messages` |
 | `GET` | `/api/me` | viewer |
 | `GET` | `/api/clusters` | viewer |
 | `GET` | `/api/clusters/:id/queues` | viewer |

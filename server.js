@@ -54,8 +54,10 @@ async function verifyAccess(token) {
   if (payload.exp && payload.exp < now - 30) throw new Error('JWT expired');
   const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   if (!aud.includes(config.access.aud)) throw new Error('JWT audience mismatch');
-  if (!payload.email) throw new Error('JWT has no email');
-  return String(payload.email).toLowerCase();
+  // People sign in with Google → email. Machines (AI agents, monitors) use an Access service token → common_name.
+  if (payload.email) return String(payload.email).toLowerCase();
+  if (payload.common_name) return 'service:' + String(payload.common_name);
+  throw new Error('JWT has no email or service token');
 }
 function matchEmail(email, patterns) {
   return (patterns || []).some((p) => {
@@ -64,6 +66,10 @@ function matchEmail(email, patterns) {
   });
 }
 function roleOf(email) {
+  if (email.startsWith('service:')) {
+    const r = (config.service_tokens || {})[email.slice(8)];
+    return ['admin', 'peeker', 'viewer'].includes(r) ? r : null;
+  }
   if (matchEmail(email, config.users.admins)) return 'admin';
   if (matchEmail(email, config.users.peekers)) return 'peeker';
   if (matchEmail(email, config.users.viewers)) return 'viewer';
@@ -118,6 +124,9 @@ async function clusterSummary(c) {
       mem_used: n.mem_used, mem_limit: n.mem_limit, mem_alarm: n.mem_alarm,
       disk_free: n.disk_free, disk_free_limit: n.disk_free_limit, disk_alarm: n.disk_free_alarm,
       partitions: n.partitions || [], uptime: n.uptime,
+      // No CPU % in the management API: cores + Erlang run queue (processes waiting for a scheduler) is the load signal.
+      processors: n.processors ?? null, run_queue: n.run_queue ?? null,
+      fd_used: n.fd_used ?? null, fd_total: n.fd_total ?? null, sockets_used: n.sockets_used ?? null, sockets_total: n.sockets_total ?? null,
     }));
     for (const n of out.nodes) {
       if (!n.running) out.problems.push(`${n.name} not running`);
@@ -202,6 +211,49 @@ async function peek(c, vhost, queue, count) {
   }));
 }
 
+// Short cache so dashboards, health checks and AI agents polling together don't hammer the brokers.
+const CACHE_MS = 5000;
+let summaryCache = { at: 0, data: null, pending: null };
+async function allSummaries() {
+  if (summaryCache.data && Date.now() - summaryCache.at < CACHE_MS) return summaryCache.data;
+  if (!summaryCache.pending) {
+    summaryCache.pending = Promise.all((config.clusters || []).map(clusterSummary))
+      .then((d) => { summaryCache = { at: Date.now(), data: d, pending: null }; return d; })
+      .catch((e) => { summaryCache.pending = null; throw e; });
+  }
+  return summaryCache.pending;
+}
+
+// Whole-system verdict: down = a hub (cluster others forward to) or every cluster is unreachable/broken; degraded = any problem.
+async function systemHealth() {
+  const cl = await allSummaries();
+  const hubs = new Set(cl.map((c) => c.forwards_to).filter(Boolean));
+  const broken = cl.filter((c) => !c.ok);
+  const unreachable = cl.filter((c) => c.problems.some((p) => p.startsWith('management API unreachable')));
+  const hubDown = cl.some((c) => hubs.has(c.id) && !c.ok);
+  const status = !broken.length ? 'ok' : (hubDown || unreachable.length === cl.length) ? 'down' : 'degraded';
+  return {
+    status, checked_at: new Date().toISOString(),
+    summary: `${cl.length - broken.length}/${cl.length} clusters healthy`,
+    clusters: cl.map((c) => ({
+      id: c.id, name: c.name, ok: c.ok, problems: c.problems, version: c.version || null,
+      role: hubs.has(c.id) ? 'hub' : c.forwards_to ? `edge → ${c.forwards_to}` : 'standalone',
+      messages: c.messages?.messages ?? 0, publish_rate: c.rates?.publish ?? 0, deliver_rate: c.rates?.deliver ?? 0,
+      connections: c.totals?.connections ?? 0, queues: c.totals?.queues ?? 0,
+      nodes: (c.nodes || []).map((n) => ({ name: n.name, running: n.running, mem_used: n.mem_used, mem_limit: n.mem_limit, mem_alarm: n.mem_alarm,
+        disk_free: n.disk_free, disk_free_limit: n.disk_free_limit, disk_alarm: n.disk_alarm, processors: n.processors, run_queue: n.run_queue })),
+      shovels: c.shovels,
+    })),
+  };
+}
+
+async function peekLogged(c, vhost, queue, count, who) {
+  const n = Math.min(PEEK_MAX(), Math.max(1, Number(count) || 5));
+  const msgs = await peek(c, vhost, queue, n);
+  await audit(`🔎 **RabbitMQ Hub — peek** ${msgs.length} message(s) from \`${queue}\` (vhost \`${vhost}\`) on **${c.name}** (requeued)\n**By:** ${who}\n**At:** ${new Date().toLocaleString('en-GB', { timeZone: TZ })} (${TZ})`);
+  return msgs;
+}
+
 async function audit(text) {
   log('AUDIT ' + text);
   if (!AUDIT_WEBHOOK) return;
@@ -209,6 +261,113 @@ async function audit(text) {
     await fetch(AUDIT_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: text, text, allowed_mentions: { parse: [] } }) });
   } catch (e) { log('audit webhook error: ' + e.message); }
+}
+
+// ---------------- API index + MCP (for AI agents) ----------------
+const VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version; } catch { return 'dev'; } })();
+const API_INDEX = {
+  name: 'rabbitmq-hub', version: VERSION,
+  auth: 'Cloudflare Access: a signed-in user, or a service token (CF-Access-Client-Id / CF-Access-Client-Secret headers) mapped in config.service_tokens',
+  endpoints: [
+    { method: 'GET', path: '/api/health', desc: 'Whole-system status: ok | degraded | down. HTTP 200 when ok, 503 otherwise.' },
+    { method: 'GET', path: '/api/clusters', desc: 'Every cluster: nodes, alarms, messages, rates, shovels, 10-min history' },
+    { method: 'GET', path: '/api/clusters/:id/queues', desc: 'Queues of one cluster with depth, consumers, rates, history' },
+    { method: 'GET', path: '/api/clusters/:id/shovels', desc: 'Shovels with state, node, source/destination, last error' },
+    { method: 'GET', path: '/api/queue-across?name=', desc: 'One queue name on every cluster (edge → hub path)' },
+    { method: 'POST', path: '/api/clusters/:id/peek', desc: 'Read up to peek_max messages (requeued, logged). admin/peeker' },
+    { method: 'POST', path: '/api/clusters/:id/purge', desc: 'Empty a queue. admin only, browser UI flow (typed confirmation)' },
+    { method: 'POST', path: '/mcp', desc: 'MCP server (Streamable HTTP, JSON responses). Read-only tools; no purge.' },
+  ],
+};
+
+const MCP_TOOLS = [
+  { name: 'system_health', title: 'System health',
+    description: 'Overall RabbitMQ status across all clusters (ok | degraded | down) with the problems of each cluster. Start here.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_clusters', title: 'List clusters',
+    description: 'All clusters with nodes (RAM, disk, alarms), queued messages, publish/deliver rates, connections, shovel counts and a 10-minute message history.',
+    inputSchema: { type: 'object', properties: {} } },
+  { name: 'list_queues', title: 'List queues',
+    description: 'Queues of one cluster, sorted by depth. Use filter to match part of a name.',
+    inputSchema: { type: 'object', required: ['cluster'], properties: {
+      cluster: { type: 'string', description: 'cluster id from list_clusters' },
+      filter: { type: 'string', description: 'substring of the queue name' },
+      only_with_messages: { type: 'boolean' },
+      include_minor: { type: 'boolean', description: 'include queues matching hide_queue_pattern (e.g. delay queues)' },
+      limit: { type: 'integer', minimum: 1, maximum: 500, default: 50 } } } },
+  { name: 'queue_across', title: 'Queue across clusters',
+    description: 'One queue name on every cluster: depth, consumers, rates and shovel state — shows where messages pile up between edges and the hub.',
+    inputSchema: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } } },
+  { name: 'list_shovels', title: 'List shovels',
+    description: 'Shovels of one cluster with state, node, source/destination (credentials masked) and last error.',
+    inputSchema: { type: 'object', required: ['cluster'], properties: { cluster: { type: 'string' } } } },
+  { name: 'read_messages', title: 'Read messages',
+    description: 'Read the first N messages of a queue and put them straight back (marked redelivered; on quorum queues counts as a delivery attempt). Logged. Needs admin/peeker and allow_peek on the cluster.',
+    inputSchema: { type: 'object', required: ['cluster', 'queue'], properties: {
+      cluster: { type: 'string' }, queue: { type: 'string' }, vhost: { type: 'string', description: 'defaults to the queue\'s vhost' },
+      count: { type: 'integer', minimum: 1, maximum: 50, default: 3 } } } },
+];
+
+async function mcpTool(name, args, who, role) {
+  const need = (id) => { const c = clusterById(id); if (!c) throw new Error(`unknown cluster "${id}" — call list_clusters`); return c; };
+  switch (name) {
+    case 'system_health': return systemHealth();
+    case 'list_clusters': return allSummaries();
+    case 'list_queues': {
+      const c = need(args.cluster);
+      const f = String(args.filter || '').toLowerCase();
+      let qs = await clusterQueues(c);
+      qs = qs.filter((q) => (!f || q.name.toLowerCase().includes(f)) && (args.include_minor || !q.minor) && (!args.only_with_messages || q.messages > 0));
+      qs.sort((a, b) => b.messages - a.messages);
+      const limit = Math.min(500, Math.max(1, Number(args.limit) || 50));
+      return { cluster: c.id, total: qs.length, queues: qs.slice(0, limit) };
+    }
+    case 'queue_across': if (!args.name) throw new Error('name required'); return queueAcross(String(args.name));
+    case 'list_shovels': return clusterShovels(need(args.cluster));
+    case 'read_messages': {
+      if (!canPeek(role)) throw new Error('reading message bodies needs admin or peeker access');
+      const c = need(args.cluster);
+      if (c.allow_peek === false) throw new Error(`reading messages is disabled for ${c.name}`);
+      let vhost = args.vhost;
+      if (!vhost) { const q = (await clusterQueues(c)).find((x) => x.name === args.queue); if (!q) throw new Error('queue not found'); vhost = q.vhost; }
+      return peekLogged(c, vhost, String(args.queue), args.count || 3, `${who} (via MCP)`);
+    }
+    default: throw new Error(`unknown tool "${name}"`);
+  }
+}
+
+async function handleMcp(req, res, who, role) {
+  let body;
+  try { body = await readBody(req); } catch { return send(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } }); }
+  const one = async (m) => {
+    if (!m || m.jsonrpc !== '2.0' || typeof m.method !== 'string') return { jsonrpc: '2.0', id: m?.id ?? null, error: { code: -32600, message: 'invalid request' } };
+    if (m.id === undefined || m.id === null) return null;   // notification (e.g. notifications/initialized)
+    const ok = (result) => ({ jsonrpc: '2.0', id: m.id, result });
+    switch (m.method) {
+      case 'initialize': return ok({
+        protocolVersion: m.params?.protocolVersion || '2025-06-18',
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: 'rabbitmq-hub', title: config.title || 'RabbitMQ Hub', version: VERSION },
+        instructions: 'Read-only view of several RabbitMQ clusters. Start with system_health; drill down with list_queues / queue_across / list_shovels. read_messages requeues messages and is logged. Purging is not available over MCP.',
+      });
+      case 'ping': return ok({});
+      case 'tools/list': return ok({ tools: MCP_TOOLS.map((t) => ({ ...t, annotations: { readOnlyHint: t.name !== 'read_messages', openWorldHint: false } })) });
+      case 'tools/call': {
+        try {
+          const data = await mcpTool(m.params?.name, m.params?.arguments || {}, who, role);
+          return ok({ content: [{ type: 'text', text: JSON.stringify(data, null, 1) }], structuredContent: Array.isArray(data) ? { items: data } : data });
+        } catch (e) { return ok({ content: [{ type: 'text', text: 'Error: ' + e.message }], isError: true }); }
+      }
+      default: return { jsonrpc: '2.0', id: m.id, error: { code: -32601, message: `method not found: ${m.method}` } };
+    }
+  };
+  if (Array.isArray(body)) {
+    const out = (await Promise.all(body.map(one))).filter(Boolean);
+    return out.length ? send(res, 200, out) : (res.writeHead(202), res.end());
+  }
+  const r = await one(body);
+  if (!r) { res.writeHead(202); return res.end(); }
+  return send(res, 200, r);
 }
 
 // ---------------- HTTP ----------------
@@ -253,8 +412,17 @@ http.createServer(async (req, res) => {
 
   try {
     if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, can_peek: canPeek(role), peek_max: PEEK_MAX(), title: config.title || 'RabbitMQ Hub' });
+    if (req.method === 'GET' && (url.pathname === '/api' || url.pathname === '/api/')) return send(res, 200, API_INDEX);
+    if (req.method === 'GET' && url.pathname === '/api/health') {
+      const h = await systemHealth();
+      return send(res, h.status === 'ok' ? 200 : 503, h);
+    }
+    if (url.pathname === '/mcp') {
+      if (req.method !== 'POST') return send(res, 405, { error: 'MCP endpoint accepts POST (JSON-RPC 2.0)' });
+      return handleMcp(req, res, email, role);
+    }
     if (req.method === 'GET' && url.pathname === '/api/clusters')
-      return send(res, 200, await Promise.all((config.clusters || []).map(clusterSummary)));
+      return send(res, 200, await allSummaries());
     let m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/queues$/);
     if (req.method === 'GET' && m) {
       const c = clusterById(m[1]); if (!c) return send(res, 404, { error: 'unknown cluster' });
@@ -280,10 +448,7 @@ http.createServer(async (req, res) => {
       if (c.allow_peek === false) return send(res, 403, { error: `peek is disabled for ${c.name} (allow_peek=false)` });
       const b = await readBody(req);
       if (!b.vhost || !b.queue) return send(res, 400, { error: 'vhost and queue required' });
-      const count = Math.min(PEEK_MAX(), Math.max(1, Number(b.count) || 5));
-      const msgs = await peek(c, b.vhost, b.queue, count);
-      await audit(`🔎 **RabbitMQ Hub — peek** ${msgs.length} message(s) from \`${b.queue}\` (vhost \`${b.vhost}\`) on **${c.name}** (requeued)\n**By:** ${email}\n**At:** ${new Date().toLocaleString('en-GB', { timeZone: TZ })} (${TZ})`);
-      return send(res, 200, msgs);
+      return send(res, 200, await peekLogged(c, b.vhost, b.queue, b.count, email));
     }
     m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/purge$/);
     if (req.method === 'POST' && m) {

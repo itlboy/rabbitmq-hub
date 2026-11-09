@@ -1,9 +1,9 @@
 // Example data for `npm run dev:mock` / `npm run build:mock` — no real cluster involved.
 const MB = 1048576, GB = 1073741824;
-const node = (name, used, limit, free, o = {}) => ({ name, running: true, mem_used: used * MB, mem_limit: limit * MB, mem_alarm: false, disk_free: free * GB, disk_alarm: false, partitions: [], ...o });
+const node = (name, used, limit, free, o = {}) => ({ name, running: true, mem_used: used * MB, mem_limit: limit * MB, mem_alarm: false, disk_free: free * GB, disk_free_limit: 2 * GB, disk_alarm: false, partitions: [], processors: 2, run_queue: 0, sockets_used: 120, sockets_total: 58000, fd_used: 140, fd_total: 65536, uptime: 3 * 86400000 + 5 * 3600000, ...o });
 const clusters = [
   { id: 'main', name: 'Main', role: 'central broker · workers read here', version: '4.3.6', ok: true, problems: [], allow_purge: true,
-    messages: { messages: 20418 }, rates: { publish: 55.2, deliver: 88.4 }, totals: { queues: 41, connections: 386 }, shovels: null, nodes: [node('broker-1', 612, 900, 18.2)] },
+    messages: { messages: 20418 }, rates: { publish: 55.2, deliver: 88.4 }, totals: { queues: 41, connections: 386 }, shovels: null, nodes: [node('broker-1', 612, 900, 18.2, { run_queue: 1 })] },
   { id: 'edge-us', forwards_to: 'main', name: 'Edge US', role: '3 nodes · shovels to Main', version: '4.3.6', ok: true, problems: [], allow_purge: true,
     messages: { messages: 3 }, rates: { publish: 21.7, deliver: 21.6 }, totals: { queues: 18, connections: 64 }, shovels: { total: 18, running: 18, bad: [] },
     nodes: [node('rabbitmq-0', 214, 2457, 512), node('rabbitmq-1', 198, 2457, 1580), node('rabbitmq-2', 203, 2457, 188)] },

@@ -4,8 +4,10 @@ import { fmt, rate, bytes } from '../format.js';
 import Sparkline from './Sparkline.vue';
 
 const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 }, color: { type: String, default: 'var(--hue-1)' } });
-defineEmits(['pick']);
+defineEmits(['pick', 'node']);
 
+const cpuLoad = (n) => (n.processors ? (n.run_queue / n.processors).toFixed(1) : '—');
+const cpuHot = (n) => n.processors && n.run_queue > n.processors;
 function unit(n) {
   const pct = n.mem_limit ? Math.min(100, (n.mem_used / n.mem_limit) * 100) : 0;
   return { pct: Math.round(pct), lit: Math.round(pct / 5), bad: n.mem_alarm || n.disk_alarm || n.partitions?.length };
@@ -45,19 +47,33 @@ function unit(n) {
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
       </dl>
 
-      <div v-if="cluster.nodes?.length" class="grid gap-1">
-        <div v-for="n in cluster.nodes" :key="n.name" class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 font-mono text-[11px]"
-          :class="n.running ? 'text-ink-2' : 'text-stop'"
-          :title="n.running ? `RAM ${bytes(n.mem_used)} / ${bytes(n.mem_limit)} watermark · disk free ${bytes(n.disk_free)}` : 'node stopped'">
-          <span class="flex min-w-0 items-center gap-2 text-ink">
-            <span class="led" :class="(!n.running || unit(n).bad) && 'off'"></span><span class="truncate">{{ n.name }}</span>
-          </span>
-          <span class="grid h-2.5 grid-cols-[repeat(20,1fr)] gap-0.5" :aria-label="`RAM ${unit(n).pct}% of watermark`">
-            <i v-for="s in 20" :key="s" class="rounded-[1px]"
-              :class="n.running && s <= unit(n).lit ? (s > 18 ? 'bg-stop' : s > 15 ? 'bg-caution' : 'bg-go') : 'bg-seg'"></i>
-          </span>
-          <span class="whitespace-nowrap tabular-nums">{{ n.running ? `${unit(n).pct}% · ${bytes(n.disk_free)} free` : 'stopped' }}</span>
-        </div>
+      <div v-if="cluster.nodes?.length" class="grid gap-2">
+        <button v-for="n in cluster.nodes" :key="n.name" type="button" @click.stop="$emit('node', n.name)" :title="`Details for ${n.name}`"
+          class="-mx-1.5 grid gap-1 rounded-md px-1.5 py-1 text-left font-mono text-[11px] transition-colors hover:bg-panel-2">
+          <div class="flex items-center gap-2">
+            <span class="led" :class="(!n.running || unit(n).bad) && 'off'"></span>
+            <span class="min-w-0 flex-1 truncate font-medium text-ink">{{ n.name }}</span>
+            <span v-if="!n.running" class="text-stop">stopped</span>
+            <span v-else-if="n.processors" class="whitespace-nowrap" :class="cpuHot(n) ? 'font-semibold text-stop' : 'text-ink-2'"
+              :title="`Erlang run queue ${n.run_queue} on ${n.processors} cores — above the core count means CPU is saturated`">
+              CPU {{ n.processors }}c · load {{ cpuLoad(n) }}
+            </span>
+          </div>
+          <div v-if="n.running" class="grid grid-cols-[2.4rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 pl-4 text-ink-2">
+            <span class="text-ink-3">RAM</span>
+            <span class="grid h-2 grid-cols-[repeat(20,1fr)] gap-0.5" :aria-label="`RAM ${unit(n).pct}% of watermark`">
+              <i v-for="s in 20" :key="s" class="rounded-[1px]" :class="s <= unit(n).lit ? (s > 18 ? 'bg-stop' : s > 15 ? 'bg-caution' : 'bg-go') : 'bg-seg'"></i>
+            </span>
+            <span class="text-right whitespace-nowrap tabular-nums" :class="n.mem_alarm && 'font-semibold text-stop'" :title="'used / memory watermark (publishers are blocked above it)'">
+              {{ bytes(n.mem_used) }} / {{ bytes(n.mem_limit) }} · {{ unit(n).pct }}%
+            </span>
+            <span class="text-ink-3">DISK</span>
+            <span class="text-ink-3">free</span>
+            <span class="text-right whitespace-nowrap tabular-nums" :class="n.disk_alarm && 'font-semibold text-stop'" :title="'free space on the data disk / limit below which publishers are blocked'">
+              {{ bytes(n.disk_free) }}<template v-if="n.disk_free_limit"> · limit {{ bytes(n.disk_free_limit) }}</template>
+            </span>
+          </div>
+        </button>
       </div>
 
       <div v-if="cluster.problems?.length" class="mt-auto grid rounded-md bg-stop-soft px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-stop">
