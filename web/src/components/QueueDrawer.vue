@@ -1,4 +1,5 @@
 <script setup>
+import { onBeforeUnmount, onMounted } from 'vue';
 // Side panel for one queue: the same queue on every cluster (edge → hub path) + peek at message bodies.
 import { computed, ref, watch } from 'vue';
 import { api } from '../api.js';
@@ -47,13 +48,17 @@ function jobName(m) {
 }
 function toggle(i) { const s = new Set(open.value); s.has(i) ? s.delete(i) : s.add(i); open.value = s; }
 async function copy(text) { try { await navigator.clipboard.writeText(text); } catch { /* clipboard blocked */ } }
+const onEsc = (e) => { if (e.key === 'Escape') emit('close'); };
+onMounted(() => window.addEventListener('keydown', onEsc));
+onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
 </script>
 
 <template>
-  <Transition enter-from-class="translate-x-full" enter-active-class="transition duration-200" leave-to-class="translate-x-full" leave-active-class="transition duration-150">
-    <aside v-if="queue" class="fixed inset-y-0 right-0 z-[15] flex w-full max-w-[640px] flex-col border-l border-rule bg-panel shadow-[-20px_0_60px_-30px_rgba(0,0,0,.5)]"
-      role="dialog" aria-modal="false" :aria-label="`Queue ${queue.name}`" @keydown.esc="emit('close')">
-      <header class="flex items-start gap-3 border-b border-rule px-5 py-4 pt-[max(16px,env(safe-area-inset-top,0px))]">
+  <Transition enter-from-class="opacity-0 [&>div]:scale-95" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-100">
+    <div v-if="queue" class="fixed inset-0 z-[15] flex items-center justify-center bg-scrim p-3 sm:p-6" @click.self="emit('close')">
+    <section class="flex max-h-[88vh] w-full max-w-[760px] flex-col overflow-hidden rounded-xl border border-rule bg-panel shadow-[0_30px_80px_-20px_rgba(0,0,0,.5)] transition-transform duration-150"
+      role="dialog" :aria-label="`Queue ${queue.name}`" aria-modal="true">
+      <header class="flex items-start gap-3 border-b border-rule px-5 py-4">
         <div class="min-w-0 flex-1">
           <span class="label">{{ cluster?.name }} · {{ queue.type }} · vhost {{ queue.vhost }}</span>
           <h2 class="m-0 mt-0.5 font-mono text-[17px] font-semibold break-all">{{ queue.name }}</h2>
@@ -144,6 +149,7 @@ async function copy(text) { try { await navigator.clipboard.writeText(text); } c
           </template>
         </section>
       </div>
-    </aside>
+    </section>
+    </div>
   </Transition>
 </template>

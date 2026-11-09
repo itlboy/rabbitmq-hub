@@ -1,4 +1,5 @@
 <script setup>
+import { onBeforeUnmount, onMounted } from 'vue';
 // Every node of one cluster: memory, disk, CPU load, sockets, uptime — with one plain-language legend at the bottom.
 import { computed } from 'vue';
 import { bytes } from '../format.js';
@@ -34,12 +35,16 @@ function uptime(ms) {
   const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${m % 60}m` : `${m}m`;
 }
+const onEsc = (e) => { if (e.key === 'Escape') emit('close'); };
+onMounted(() => window.addEventListener('keydown', onEsc));
+onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
 </script>
 
 <template>
-  <Transition enter-from-class="translate-x-full" enter-active-class="transition duration-200" leave-to-class="translate-x-full" leave-active-class="transition duration-150">
-    <aside v-if="cluster" class="fixed inset-y-0 right-0 z-[15] flex w-full max-w-[560px] flex-col border-l border-rule bg-panel shadow-[-20px_0_60px_-30px_rgba(0,0,0,.5)]"
-      role="dialog" :aria-label="`Nodes of ${cluster.name}`" @keydown.esc="emit('close')">
+  <Transition enter-from-class="opacity-0 [&>div]:scale-95" enter-active-class="transition duration-150" leave-to-class="opacity-0" leave-active-class="transition duration-100">
+    <div v-if="cluster" class="fixed inset-0 z-[15] flex items-center justify-center bg-scrim p-3 sm:p-6" @click.self="emit('close')">
+    <section class="flex max-h-[88vh] w-full max-w-[640px] flex-col overflow-hidden rounded-xl border border-rule bg-panel shadow-[0_30px_80px_-20px_rgba(0,0,0,.5)] transition-transform duration-150"
+      role="dialog" :aria-label="`Nodes of ${cluster.name}`" aria-modal="true">
       <header class="flex items-start gap-3 border-b border-rule bg-panel-2 px-5 py-4">
         <div class="min-w-0 flex-1">
           <span class="label">nodes · RabbitMQ {{ cluster.version }}</span>
@@ -87,6 +92,7 @@ function uptime(ms) {
           <p class="m-0"><b class="text-ink">Conns</b> — open client connections (apps, workers, shovels) and open files.</p>
         </section>
       </div>
-    </aside>
+    </section>
+    </div>
   </Transition>
 </template>
