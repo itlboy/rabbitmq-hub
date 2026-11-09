@@ -1,31 +1,33 @@
 <script setup>
-// Plain-language detail for one RabbitMQ node: what each number means and what happens when it crosses its limit.
+// Every node of one cluster: memory, disk, CPU load, sockets, uptime — with one plain-language legend at the bottom.
 import { computed } from 'vue';
 import { bytes } from '../format.js';
 
-const props = defineProps({ node: Object, cluster: Object, color: String });
+const props = defineProps({ cluster: Object, color: String });
 const emit = defineEmits(['close']);
 
-const pct = (a, b) => (b ? Math.min(100, Math.round((a / b) * 100)) : 0);
-const ram = computed(() => pct(props.node?.mem_used, props.node?.mem_limit));
-const load = computed(() => (props.node?.processors ? props.node.run_queue / props.node.processors : null));
-const diskHeadroom = computed(() => (props.node?.disk_free_limit ? props.node.disk_free / props.node.disk_free_limit : null));
-const level = (v, warn, crit) => (v >= crit ? 'crit' : v >= warn ? 'warn' : 'ok');
-const ramLevel = computed(() => (props.node?.mem_alarm ? 'crit' : level(ram.value, 75, 90)));
-const diskLevel = computed(() => (props.node?.disk_alarm ? 'crit' : diskHeadroom.value === null ? 'ok' : diskHeadroom.value < 2 ? 'crit' : diskHeadroom.value < 5 ? 'warn' : 'ok'));
-const cpuLevel = computed(() => (load.value === null ? 'ok' : load.value > 1 ? 'crit' : load.value > 0.7 ? 'warn' : 'ok'));
-const verdict = computed(() => {
-  const n = props.node; if (!n) return null;
-  if (!n.running) return { level: 'crit', text: 'This node is stopped. The cluster keeps working on the other nodes if it has a majority, but it has lost redundancy.' };
-  const issues = [];
-  if (n.mem_alarm) issues.push('memory alarm — publishers are blocked');
-  if (n.disk_alarm) issues.push('disk alarm — publishers are blocked');
-  if (n.partitions?.length) issues.push('cut off from ' + n.partitions.join(', '));
-  if (issues.length) return { level: 'crit', text: 'Needs attention: ' + issues.join('; ') + '.' };
-  const warn = [ramLevel.value, diskLevel.value, cpuLevel.value].includes('warn');
-  return warn ? { level: 'warn', text: 'Running, but one resource is getting close to its limit (see below).' } : { level: 'ok', text: 'Healthy — memory, disk and CPU are all well within their limits.' };
+const lvl = (v, w, c) => (v >= c ? 'crit' : v >= w ? 'warn' : 'ok');
+const rows = computed(() => (props.cluster?.nodes || []).map((n) => {
+  const ram = n.mem_limit ? Math.min(100, Math.round((n.mem_used / n.mem_limit) * 100)) : 0;
+  const load = n.processors ? n.run_queue / n.processors : null;
+  const diskRatio = n.disk_free_limit ? n.disk_free / n.disk_free_limit : null;
+  return {
+    ...n, ram, load,
+    ramLevel: n.mem_alarm ? 'crit' : lvl(ram, 75, 90),
+    diskLevel: n.disk_alarm ? 'crit' : diskRatio === null ? 'ok' : diskRatio < 2 ? 'crit' : diskRatio < 5 ? 'warn' : 'ok',
+    cpuLevel: load === null ? 'ok' : lvl(load, 0.7, 1),
+    alerts: [n.mem_alarm && 'memory alarm — publishers blocked', n.disk_alarm && 'disk alarm — publishers blocked',
+      n.partitions?.length && 'cut off from ' + n.partitions.join(', ')].filter(Boolean),
+  };
+}));
+const summary = computed(() => {
+  const r = rows.value; const down = r.filter((n) => !n.running).length;
+  if (down) return { level: 'crit', text: `${down} of ${r.length} node(s) stopped. The cluster keeps serving if the rest still form a majority, but redundancy is reduced.` };
+  if (r.some((n) => n.alerts.length)) return { level: 'crit', text: 'A node has an alarm: publishers are blocked until it clears.' };
+  if (r.some((n) => [n.ramLevel, n.diskLevel, n.cpuLevel].includes('warn'))) return { level: 'warn', text: 'All nodes running; one resource is getting close to its limit.' };
+  return { level: 'ok', text: `All ${r.length} node(s) running with plenty of headroom.` };
 });
-const tone = { ok: 'text-go', warn: 'text-caution', crit: 'text-stop' };
+const tone = { ok: 'text-ink', warn: 'text-caution', crit: 'text-stop' };
 const bar = { ok: 'bg-go', warn: 'bg-caution', crit: 'bg-stop' };
 function uptime(ms) {
   if (!ms) return '—';
@@ -36,63 +38,52 @@ function uptime(ms) {
 
 <template>
   <Transition enter-from-class="translate-x-full" enter-active-class="transition duration-200" leave-to-class="translate-x-full" leave-active-class="transition duration-150">
-    <aside v-if="node" class="fixed inset-y-0 right-0 z-[15] flex w-full max-w-[560px] flex-col border-l border-rule bg-panel shadow-[-20px_0_60px_-30px_rgba(0,0,0,.5)]"
-      role="dialog" :aria-label="`Node ${node.name}`" @keydown.esc="emit('close')">
+    <aside v-if="cluster" class="fixed inset-y-0 right-0 z-[15] flex w-full max-w-[560px] flex-col border-l border-rule bg-panel shadow-[-20px_0_60px_-30px_rgba(0,0,0,.5)]"
+      role="dialog" :aria-label="`Nodes of ${cluster.name}`" @keydown.esc="emit('close')">
       <header class="flex items-start gap-3 border-b border-rule px-5 py-4" :style="{ background: `color-mix(in srgb, ${color} 8%, var(--panel))` }">
         <div class="min-w-0 flex-1">
-          <span class="label">{{ cluster?.name }} · node</span>
-          <h2 class="m-0 mt-0.5 font-mono text-[17px] font-semibold break-all">{{ node.name }}</h2>
+          <span class="label">nodes · RabbitMQ {{ cluster.version }}</span>
+          <h2 class="m-0 mt-0.5 text-[17px] font-bold">{{ cluster.name }}</h2>
         </div>
         <button type="button" class="btn" @click="emit('close')">Close</button>
       </header>
 
-      <div class="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-        <p v-if="verdict" class="m-0 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[14px] leading-relaxed"
-          :class="verdict.level === 'crit' ? 'bg-stop-soft' : verdict.level === 'warn' ? 'bg-caution-soft' : 'bg-panel-2'">
-          <span class="led mt-1.5" :class="verdict.level === 'crit' && 'off'"></span>
-          <span>{{ verdict.text }}</span>
+      <div class="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <p class="m-0 flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[14px] leading-relaxed"
+          :class="summary.level === 'crit' ? 'bg-stop-soft' : summary.level === 'warn' ? 'bg-caution-soft' : 'bg-panel-2'">
+          <span class="led mt-1.5" :class="summary.level === 'crit' && 'off'"></span><span>{{ summary.text }}</span>
         </p>
 
-        <template v-if="node.running">
-          <!-- RAM -->
-          <section class="space-y-2">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="m-0 text-[14px] font-bold">Memory</h3>
-              <span class="font-mono text-[13px] font-semibold" :class="tone[ramLevel]">{{ ram }}% of limit</span>
-            </div>
-            <div class="h-2.5 overflow-hidden rounded-full bg-seg"><i class="block h-full rounded-full" :class="bar[ramLevel]" :style="{ width: ram + '%' }"></i></div>
-            <p class="m-0 font-mono text-xs text-ink-2">{{ bytes(node.mem_used) }} used · limit (watermark) {{ bytes(node.mem_limit) }}</p>
-            <p class="m-0 text-[13px] leading-relaxed text-ink-2">When memory reaches the limit, RabbitMQ <b>stops accepting new messages</b> from publishers until it drops again — apps that publish will slow down or time out. Usually caused by a big backlog of messages waiting.</p>
-          </section>
+        <article v-for="n in rows" :key="n.name" class="space-y-2.5 rounded-lg border border-rule p-3.5" :class="!n.running && 'bg-stop-soft'">
+          <div class="flex items-center gap-2">
+            <span class="led" :class="(!n.running || n.alerts.length) && 'off'"></span>
+            <b class="min-w-0 flex-1 truncate font-mono text-[13px]">{{ n.name }}</b>
+            <span class="font-mono text-[11px] text-ink-3">{{ n.running ? 'up ' + uptime(n.uptime) : 'stopped' }}</span>
+          </div>
+          <p v-if="n.alerts.length" class="m-0 font-mono text-xs text-stop">{{ n.alerts.join(' · ') }}</p>
+          <dl v-if="n.running" class="m-0 grid grid-cols-[3.2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 font-mono text-xs">
+            <dt class="label">RAM</dt>
+            <dd class="m-0 h-2 overflow-hidden rounded-full bg-seg"><i class="block h-full rounded-full" :class="bar[n.ramLevel]" :style="{ width: Math.max(2, n.ram) + '%' }"></i></dd>
+            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.ramLevel]"><b>{{ n.ram }}%</b> · {{ bytes(n.mem_used) }} / {{ bytes(n.mem_limit) }}</dd>
+            <dt class="label">Disk</dt>
+            <dd class="m-0 text-ink-3">free</dd>
+            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.diskLevel]"><b>{{ bytes(n.disk_free) }}</b> · limit {{ bytes(n.disk_free_limit) }}</dd>
+            <dt class="label">CPU</dt>
+            <dd class="m-0 text-ink-3">{{ n.processors ?? '—' }} cores</dd>
+            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.cpuLevel]">load <b>{{ n.load === null ? '—' : n.load.toFixed(1) }}</b></dd>
+            <dt class="label">Conns</dt>
+            <dd class="m-0 text-ink-3">sockets · files</dd>
+            <dd class="m-0 text-right whitespace-nowrap text-ink-2">{{ n.sockets_used ?? '—' }} · {{ n.fd_used ?? '—' }}</dd>
+          </dl>
+        </article>
 
-          <!-- Disk -->
-          <section class="space-y-2">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="m-0 text-[14px] font-bold">Disk</h3>
-              <span class="font-mono text-[13px] font-semibold" :class="tone[diskLevel]">{{ bytes(node.disk_free) }} free</span>
-            </div>
-            <p class="m-0 font-mono text-xs text-ink-2">free space on the data disk · blocks publishers below {{ bytes(node.disk_free_limit) }}</p>
-            <p class="m-0 text-[13px] leading-relaxed text-ink-2">Messages are written to disk. If free space falls below the limit, RabbitMQ <b>blocks publishers</b> to protect its data. More than a few times the limit free is comfortable.</p>
-          </section>
-
-          <!-- CPU -->
-          <section class="space-y-2">
-            <div class="flex items-baseline justify-between gap-3">
-              <h3 class="m-0 text-[14px] font-bold">CPU</h3>
-              <span class="font-mono text-[13px] font-semibold" :class="tone[cpuLevel]">{{ node.processors ?? '—' }} cores · load {{ load === null ? '—' : load.toFixed(1) }}</span>
-            </div>
-            <p class="m-0 font-mono text-xs text-ink-2">run queue {{ node.run_queue ?? '—' }} (Erlang processes waiting for a CPU core)</p>
-            <p class="m-0 text-[13px] leading-relaxed text-ink-2">RabbitMQ doesn't report CPU %. <b>Load</b> = processes waiting ÷ cores: below 1 means the CPU keeps up; above 1 means work is queuing for the CPU and messages are handled late.</p>
-          </section>
-
-          <!-- Connections / uptime -->
-          <section class="grid grid-cols-3 gap-3 border-t border-rule pt-4">
-            <div><span class="label">sockets</span><div class="font-mono text-[15px] font-semibold">{{ node.sockets_used ?? '—' }}<span v-if="node.sockets_total" class="text-xs font-normal text-ink-3"> / {{ node.sockets_total }}</span></div></div>
-            <div><span class="label">open files</span><div class="font-mono text-[15px] font-semibold">{{ node.fd_used ?? '—' }}<span v-if="node.fd_total" class="text-xs font-normal text-ink-3"> / {{ node.fd_total }}</span></div></div>
-            <div><span class="label">up for</span><div class="font-mono text-[15px] font-semibold">{{ uptime(node.uptime) }}</div></div>
-          </section>
-          <p class="m-0 text-[12px] text-ink-3">Sockets = client connections (apps, workers, shovels). If they reach the max, new connections are refused.</p>
-        </template>
+        <section class="space-y-2 border-t border-rule pt-4 text-[13px] leading-relaxed text-ink-2">
+          <h3 class="label m-0">What these mean</h3>
+          <p class="m-0"><b class="text-ink">RAM</b> — memory used as a share of the limit (watermark). At 100% RabbitMQ <b>stops accepting new messages</b> until memory drops; publishing apps slow down or time out. A big backlog is the usual cause.</p>
+          <p class="m-0"><b class="text-ink">Disk</b> — free space for message data. Below the limit RabbitMQ <b>blocks publishers</b> to protect its data. Several times the limit free is comfortable.</p>
+          <p class="m-0"><b class="text-ink">CPU load</b> — processes waiting for a CPU core ÷ number of cores (RabbitMQ has no CPU %). Under 1 the CPU keeps up; over 1 work queues for the CPU and messages are handled late. In Kubernetes the core count is the whole machine's.</p>
+          <p class="m-0"><b class="text-ink">Conns</b> — open client connections (apps, workers, shovels) and open files.</p>
+        </section>
       </div>
     </aside>
   </Transition>

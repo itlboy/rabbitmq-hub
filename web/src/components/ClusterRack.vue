@@ -4,10 +4,25 @@ import { fmt, rate, bytes } from '../format.js';
 import Sparkline from './Sparkline.vue';
 
 const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 }, color: { type: String, default: 'var(--hue-1)' } });
-defineEmits(['pick', 'node']);
+defineEmits(['pick', 'nodes']);
 
-const cpuLoad = (n) => (n.processors ? (n.run_queue / n.processors).toFixed(1) : '—');
-const cpuHot = (n) => n.processors && n.run_queue > n.processors;
+import { computed } from 'vue';
+// Whole-cluster summary: worst node per resource.
+const resources = computed(() => {
+  const ns = props.cluster.nodes || [];
+  const up = ns.filter((n) => n.running);
+  const ram = Math.max(0, ...up.map((n) => (n.mem_limit ? (n.mem_used / n.mem_limit) * 100 : 0)));
+  const diskNode = up.reduce((m, n) => (m && m.disk_free <= n.disk_free ? m : n), null);
+  const load = Math.max(0, ...up.map((n) => (n.processors ? n.run_queue / n.processors : 0)));
+  const lvl = (v, w, c) => (v >= c ? 'crit' : v >= w ? 'warn' : 'ok');
+  const diskRatio = diskNode?.disk_free_limit ? diskNode.disk_free / diskNode.disk_free_limit : 99;
+  return [
+    { label: 'nodes', value: `${up.length}/${ns.length}`, level: up.length < ns.length ? 'crit' : 'ok', title: 'running / total' },
+    { label: 'ram', value: Math.round(ram) + '%', level: up.some((n) => n.mem_alarm) ? 'crit' : lvl(ram, 75, 90), title: 'highest node, % of memory watermark' },
+    { label: 'disk', value: diskNode ? bytes(diskNode.disk_free) : '—', level: up.some((n) => n.disk_alarm) ? 'crit' : diskRatio < 2 ? 'crit' : diskRatio < 5 ? 'warn' : 'ok', title: 'lowest free space of any node' },
+    { label: 'cpu', value: load.toFixed(1), level: lvl(load, 0.7, 1), title: 'highest load (run queue ÷ cores); above 1 = CPU saturated' },
+  ];
+});
 function unit(n) {
   const pct = n.mem_limit ? Math.min(100, (n.mem_used / n.mem_limit) * 100) : 0;
   return { pct: Math.round(pct), lit: Math.round(pct / 5), bad: n.mem_alarm || n.disk_alarm || n.partitions?.length };
@@ -47,34 +62,14 @@ function unit(n) {
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
       </dl>
 
-      <div v-if="cluster.nodes?.length" class="grid gap-2">
-        <button v-for="n in cluster.nodes" :key="n.name" type="button" @click.stop="$emit('node', n.name)" :title="`Details for ${n.name}`"
-          class="-mx-1.5 grid gap-1 rounded-md px-1.5 py-1 text-left font-mono text-[11px] transition-colors hover:bg-panel-2">
-          <div class="flex items-center gap-2">
-            <span class="led" :class="(!n.running || unit(n).bad) && 'off'"></span>
-            <span class="min-w-0 flex-1 truncate font-medium text-ink">{{ n.name }}</span>
-            <span v-if="!n.running" class="text-stop">stopped</span>
-            <span v-else-if="n.processors" class="whitespace-nowrap" :class="cpuHot(n) ? 'font-semibold text-stop' : 'text-ink-2'"
-              :title="`Erlang run queue ${n.run_queue} on ${n.processors} cores — above the core count means CPU is saturated`">
-              CPU {{ n.processors }}c · load {{ cpuLoad(n) }}
-            </span>
-          </div>
-          <div v-if="n.running" class="grid grid-cols-[2.4rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 pl-4 text-ink-2">
-            <span class="text-ink-3">RAM</span>
-            <span class="grid h-2 grid-cols-[repeat(20,1fr)] gap-0.5" :aria-label="`RAM ${unit(n).pct}% of watermark`">
-              <i v-for="s in 20" :key="s" class="rounded-[1px]" :class="s <= unit(n).lit ? (s > 18 ? 'bg-stop' : s > 15 ? 'bg-caution' : 'bg-go') : 'bg-seg'"></i>
-            </span>
-            <span class="text-right whitespace-nowrap tabular-nums" :class="n.mem_alarm && 'font-semibold text-stop'" :title="'used / memory watermark (publishers are blocked above it)'">
-              {{ bytes(n.mem_used) }} / {{ bytes(n.mem_limit) }} · {{ unit(n).pct }}%
-            </span>
-            <span class="text-ink-3">DISK</span>
-            <span class="text-ink-3">free</span>
-            <span class="text-right whitespace-nowrap tabular-nums" :class="n.disk_alarm && 'font-semibold text-stop'" :title="'free space on the data disk / limit below which publishers are blocked'">
-              {{ bytes(n.disk_free) }}<template v-if="n.disk_free_limit"> · limit {{ bytes(n.disk_free_limit) }}</template>
-            </span>
-          </div>
-        </button>
-      </div>
+      <!-- One summary row for the whole cluster (worst node wins); click for every node -->
+      <button v-if="cluster.nodes?.length" type="button" @click.stop="$emit('nodes')" title="Show every node"
+        class="grid grid-cols-4 divide-x divide-rule rounded-lg border border-rule text-left transition-colors hover:border-ink-3">
+        <span v-for="r in resources" :key="r.label" class="min-w-0 px-2.5 py-1.5" :class="r.level === 'crit' ? 'bg-stop-soft' : r.level === 'warn' ? 'bg-caution-soft' : ''">
+          <span class="label block">{{ r.label }}</span>
+          <span class="block truncate font-mono text-[14px] font-semibold tabular-nums" :class="r.level === 'crit' ? 'text-stop' : r.level === 'warn' ? 'text-caution' : 'text-ink'" :title="r.title">{{ r.value }}</span>
+        </span>
+      </button>
 
       <div v-if="cluster.problems?.length" class="mt-auto grid rounded-md bg-stop-soft px-2.5 py-1.5 font-mono text-[11px] leading-relaxed text-stop">
         <span v-for="p in cluster.problems" :key="p">! {{ p }}</span>
