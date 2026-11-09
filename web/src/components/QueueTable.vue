@@ -1,9 +1,12 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { fmt, rate } from '../format.js';
+import Sparkline from './Sparkline.vue';
+import ShovelList from './ShovelList.vue';
 
-const props = defineProps({ cluster: Object, queues: { type: Array, default: () => [] }, canPurge: Boolean, error: String });
-const emit = defineEmits(['purge']);
+const props = defineProps({ cluster: Object, queues: { type: Array, default: () => [] }, canPurge: Boolean, error: String,
+  tab: { type: String, default: 'queues' }, color: { type: String, default: 'var(--signal)' }, shovels: { type: Array, default: () => [] }, shovelsError: String, shovelsLoading: Boolean, activeQueue: String });
+const emit = defineEmits(['purge', 'open', 'tab']);
 
 const filter = ref('');
 const hideMinor = ref(true);
@@ -28,9 +31,17 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
 <template>
   <section class="overflow-hidden rounded-xl border border-rule bg-panel" aria-label="Queues">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-rule px-4 py-3.5">
-      <h2 class="m-0 text-[15px] font-bold">Queues <span v-if="cluster" class="font-medium text-ink-3">· {{ cluster.name }}</span></h2>
+      <div class="flex items-center gap-1 rounded-md border border-rule bg-panel-2 p-0.5" role="tablist">
+        <button v-for="t in [{ id: 'queues', label: 'Queues', n: queues.length }, ...(cluster?.shovels ? [{ id: 'shovels', label: 'Shovels', n: cluster.shovels.total, bad: cluster.shovels.bad.length }] : [])]" :key="t.id"
+          type="button" role="tab" :aria-selected="tab === t.id" @click="emit('tab', t.id)"
+          class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[13px] font-semibold transition-colors"
+          :class="tab === t.id ? 'bg-panel text-ink shadow-[0_1px_2px_rgba(0,0,0,.08)]' : 'text-ink-3 hover:text-ink'">
+          {{ t.label }} <span class="font-mono text-[11px] font-normal" :class="t.bad ? 'text-stop' : 'text-ink-3'">{{ t.bad ? `${t.bad}!` : t.n }}</span>
+        </button>
+      </div>
+      <span v-if="cluster" class="text-[13px] font-medium text-ink-3">{{ cluster.name }}</span>
       <span v-if="cluster && !cluster.allow_purge" class="rounded bg-caution-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[.08em] text-caution">read-only</span>
-      <div class="flex w-full flex-wrap items-center gap-3 md:ml-auto md:w-auto">
+      <div v-if="tab === 'queues'" class="flex w-full flex-wrap items-center gap-3 md:ml-auto md:w-auto">
         <label class="relative w-full md:w-64">
           <svg class="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input v-model="filter" id="queue-filter" type="search" placeholder="filter queues" aria-label="Filter queues"
@@ -42,7 +53,8 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
       </div>
     </div>
 
-    <div class="overflow-x-auto">
+    <ShovelList v-if="tab === 'shovels'" :shovels="shovels" :error="shovelsError" :loading="shovelsLoading" @open="(n) => emit('open', n)" />
+    <div v-else class="overflow-x-auto">
       <table class="w-full border-collapse">
         <thead>
           <tr>
@@ -57,26 +69,28 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
         <tbody class="font-mono text-xs tabular-nums">
           <tr v-if="error"><td colspan="9" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
           <tr v-else-if="!rows.length"><td colspan="9" class="px-4 py-10 text-center font-sans text-ink-3">{{ queues.length ? 'No queues match these filters.' : cluster ? 'This cluster has no queues yet.' : 'Pick a cluster to read its queues.' }}</td></tr>
-          <tr v-for="q in rows" :key="q.vhost + q.name" class="group border-b border-rule last:border-0"
-            :class="q.messages > 1000 ? 'bg-caution-soft/70 shadow-[inset_3px_0_0_var(--caution)]' : 'hover:bg-panel-2'">
+          <tr v-for="q in rows" :key="q.vhost + q.name" class="group cursor-pointer border-b border-rule last:border-0"
+            :class="[(q.hot ?? q.messages > 1000) ? 'bg-caution-soft/70 shadow-[inset_3px_0_0_var(--caution)]' : 'hover:bg-panel-2', activeQueue === q.name && 'outline outline-2 -outline-offset-2 outline-ink']"
+            tabindex="0" @click="emit('open', q.name)" @keydown.enter="emit('open', q.name)">
             <td class="px-3.5 py-2.5 font-medium whitespace-nowrap text-ink">{{ q.name }}</td>
             <td class="px-3.5 py-2.5">
-              <span class="rounded-[3px] border px-1.5 py-0.5 text-[10px] uppercase tracking-[.06em]" :class="q.type === 'quorum' ? 'border-signal text-signal' : 'border-rule text-ink-2'">{{ q.type }}</span>
+              <span class="rounded-[3px] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[.06em]" :class="q.type === 'quorum' ? 'bg-quorum/12 text-quorum' : q.type === 'classic' ? 'bg-classic/12 text-classic' : 'bg-panel-2 text-ink-2'">{{ q.type }}</span>
             </td>
             <td class="px-3.5 py-2.5 text-right whitespace-nowrap">
               <span class="inline-flex items-center justify-end gap-2.5">
-                <span v-if="q.messages" class="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-seg"><i class="block h-full bg-signal" :style="{ width: Math.max(4, (q.messages / max) * 100) + '%' }"></i></span>
+                <Sparkline v-if="q.history?.length" :values="q.history" :width="72" :height="18" :color="color" class="max-md:hidden" />
+                <span v-else-if="q.messages" class="inline-block h-1.5 w-16 overflow-hidden rounded-full bg-seg"><i class="block h-full bg-signal" :style="{ width: Math.max(4, (q.messages / max) * 100) + '%' }"></i></span>
                 <span :class="!q.messages && 'text-ink-3/60'">{{ fmt(q.messages) }}</span>
               </span>
             </td>
             <td class="px-3.5 py-2.5 text-right" :class="!q.ready && 'text-ink-3/60'">{{ fmt(q.ready) }}</td>
             <td class="px-3.5 py-2.5 text-right" :class="!q.unacked && 'text-ink-3/60'">{{ fmt(q.unacked) }}</td>
-            <td class="px-3.5 py-2.5 text-right" :class="!q.consumers && 'text-ink-3/60'">{{ fmt(q.consumers) }}</td>
-            <td class="px-3.5 py-2.5 text-right" :class="!q.publish && 'text-ink-3/60'">{{ rate(q.publish) }}</td>
-            <td class="px-3.5 py-2.5 text-right" :class="!q.deliver && 'text-ink-3/60'">{{ rate(q.deliver) }}</td>
+            <td class="px-3.5 py-2.5 text-right" :class="!q.consumers ? (q.messages && !q.minor ? 'font-semibold text-stop' : 'text-ink-3/60') : ''" :title="!q.consumers && q.messages && !q.minor ? 'Messages waiting but no consumer attached' : ''">{{ fmt(q.consumers) }}<span v-if="!q.consumers && q.messages && !q.minor" class="ml-1">!</span></td>
+            <td class="px-3.5 py-2.5 text-right" :class="q.publish ? 'text-signal' : 'text-ink-3/60'">{{ rate(q.publish) }}</td>
+            <td class="px-3.5 py-2.5 text-right" :class="q.deliver ? 'text-out' : 'text-ink-3/60'">{{ rate(q.deliver) }}</td>
             <td class="w-px py-2 pr-3.5 pl-1">
               <button v-if="canPurge" type="button" class="btn hover:enabled:border-stop hover:enabled:bg-stop-soft hover:enabled:text-stop"
-                :disabled="!q.messages" @click="emit('purge', q)">Empty</button>
+                :disabled="!q.messages" @click.stop="emit('purge', q)">Empty</button>
             </td>
           </tr>
         </tbody>

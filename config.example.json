@@ -5,13 +5,15 @@
     "team_domain": "your-team.cloudflareaccess.com",
     "aud": "<application AUD tag from Cloudflare Zero Trust>"
   },
+  "peek_max": 10,
   "users": {
     "admins": ["alice@example.com"],
+    "peekers": [],
     "viewers": ["*@example.com"]
   },
   "clusters": [
     { "id": "main", "name": "Main", "role": "central broker", "api": "http://127.0.0.1:15672/api", "expected_nodes": 1, "allow_purge": true, "hide_queue_pattern": "\\.delay\\." },
     { "id": "edge-us", "name": "Edge US", "role": "3 nodes, shovels to main", "api": "http://192.0.2.10:15672/api", "forwards_to": "main", "expected_nodes": 3, "allow_purge": true, "hide_queue_pattern": "\\.delay\\." },
-    { "id": "legacy", "name": "Legacy (read-only)", "role": "being retired", "api": "https://legacy-broker.example.com/api", "expected_nodes": 1, "allow_purge": false }
+    { "id": "legacy", "name": "Legacy (read-only)", "role": "being retired", "api": "https://legacy-broker.example.com/api", "expected_nodes": 1, "allow_purge": false, "allow_peek": false }
   ]
 }

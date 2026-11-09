@@ -3,7 +3,7 @@
 import { computed } from 'vue';
 import { fmt, rate } from '../format.js';
 
-const props = defineProps({ clusters: { type: Array, required: true } });
+const props = defineProps({ clusters: { type: Array, required: true }, colors: { type: Object, default: () => ({}) } });
 const emit = defineEmits(['pick']);
 
 const hub = computed(() => props.clusters.find((c) => props.clusters.some((x) => x.forwards_to === c.id)));
@@ -21,8 +21,9 @@ const wire = computed(() => {
     <span class="label shrink-0 max-md:w-full">Flow</span>
     <div class="flex min-w-0 flex-wrap gap-2">
       <button v-for="c in sources" :key="c.id" type="button" @click="emit('pick', c.id)"
-        class="flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors hover:border-ink-3"
-        :class="healthy(c) ? 'border-rule bg-panel-2' : 'border-stop bg-stop-soft'">
+        class="flex min-w-0 items-center gap-2 rounded-md border border-l-[3px] px-2.5 py-1.5 text-left transition-colors hover:border-ink-3"
+        :class="healthy(c) ? 'border-rule' : 'border-stop bg-stop-soft'"
+        :style="{ borderLeftColor: colors[c.id], ...(healthy(c) ? { background: `color-mix(in srgb, ${colors[c.id]} 8%, var(--panel))` } : {}) }">
         <span class="led" :class="!c.ok && 'off'"></span>
         <span class="truncate text-[13px] font-semibold">{{ c.name }}</span>
         <span class="whitespace-nowrap font-mono text-[11px] text-ink-2">
@@ -36,11 +37,11 @@ const wire = computed(() => {
     </svg>
     <span class="font-mono text-xs text-signal md:hidden" aria-hidden="true">→</span>
     <button type="button" @click="emit('pick', hub.id)"
-      class="flex items-center gap-2 rounded-md border-2 border-ink bg-panel px-2.5 py-1 text-left">
+      class="flex items-center gap-2 rounded-md border-2 px-2.5 py-1 text-left" :style="{ borderColor: colors[hub.id], background: `color-mix(in srgb, ${colors[hub.id]} 10%, var(--panel))` }">
       <span class="led" :class="!hub.ok && 'off'"></span>
       <span class="text-[13px] font-semibold">{{ hub.name }}</span>
       <span class="font-mono text-[15px] font-semibold tabular-nums">{{ fmt(hub.messages?.messages) }}</span>
-      <span class="font-mono text-[11px] text-ink-3">waiting · {{ rate(hub.rates?.deliver) }}/s out</span>
+      <span class="font-mono text-[11px] text-ink-3">waiting · <b class="font-semibold text-out">{{ rate(hub.rates?.deliver) }}</b>/s out</span>
     </button>
     <span class="label ml-auto shrink-0 max-lg:hidden">{{ rate(inbound) }} msg/s in</span>
   </section>

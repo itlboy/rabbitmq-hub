@@ -3,7 +3,13 @@
 A tiny, dependency-free dashboard to watch several RabbitMQ clusters from one page — and empty a queue when you have to.
 
 - **Clusters at a glance** — health dot, version, nodes (RAM / disk / alarms / partitions), queued messages, publish & get rates, connections, shovel status.
-- **Queues per cluster** — filter, sort by any column, hide minor queues (e.g. delay queues) with a regex, auto-refresh every 10 s.
+- **Queues per cluster** — filter, sort by any column, hide minor queues (e.g. delay queues) with a regex, auto-refresh every 10 s (pause / refresh now).
+- **Trends** — 10-minute sparklines for every cluster and queue (from the management API's own samples); a rising backlog turns amber.
+- **One queue across clusters** — open a queue to see it on every cluster along the edge → hub path, with its shovel state.
+- **Shovels tab** — every shovel with state, node, source/destination (credentials masked) and last error.
+- **Read messages** — peek at up to 10 messages (requeued, logged); admins and `peekers` only, can be disabled per cluster.
+- **Deep links** — `#cluster` or `#cluster/queue`; the health badge jumps to the first cluster that needs attention.
+- **A colour per cluster**, messages with no consumer flagged in red.
 - **Empty a queue** — admins only, the queue name must be typed again, and purge can be disabled per cluster. Every purge is logged and can be posted to a webhook.
 - **No database** — users, roles and clusters live in one `config.json`, hot-reloaded when it changes.
 - **No runtime dependencies** — `server.js` uses only the Node.js 26 standard library. The UI is Vue 3 + Tailwind CSS 4, built once with Vite into `dist/`.
@@ -31,8 +37,9 @@ Copy `config.example.json` to `config.json`:
 | `public_origin` | Public URL of the hub; POSTs from another origin are rejected |
 | `access.team_domain` | `<team>.cloudflareaccess.com` |
 | `access.aud` | AUD tag of the Access application |
-| `users.admins` / `users.viewers` | Emails or `*@domain` |
-| `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `hide_queue_pattern` (regex, optional), `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional) |
+| `users.admins` / `users.peekers` / `users.viewers` | Emails or `*@domain`. Admins: view + read messages + purge. Peekers: view + read messages. Viewers: view only |
+| `peek_max` | Max messages per read (default 10, max 50) |
+| `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `allow_peek` (default true), `hide_queue_pattern` (regex, optional), `warn_messages` (default 1000) / `warn_threshold` (`{queue: n}`) for row highlighting, `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional) |
 
 Environment variables:
 
@@ -94,7 +101,13 @@ Layout: `web/src/App.vue` (page), `web/src/components/` (`FlowStrip`, `ClusterRa
 | `GET` | `/api/me` | viewer |
 | `GET` | `/api/clusters` | viewer |
 | `GET` | `/api/clusters/:id/queues` | viewer |
+| `GET` | `/api/clusters/:id/shovels` | viewer |
+| `GET` | `/api/queue-across?name=` | viewer |
+| `POST` | `/api/clusters/:id/peek` `{vhost, queue, count}` | admin / peeker, cluster `allow_peek` |
 | `POST` | `/api/clusters/:id/purge` `{vhost, queue, confirm}` | admin, `confirm` must equal `queue` |
+
+Reading messages uses the management API `get` with `ack_requeue_true`: messages come back to the queue, but they are marked
+redelivered, may change order, and on quorum queues each read counts as a delivery attempt (`delivery-limit`).
 
 ## License
 

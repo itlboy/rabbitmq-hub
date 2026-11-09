@@ -7,6 +7,7 @@ import FlowStrip from './components/FlowStrip.vue';
 import ClusterRack from './components/ClusterRack.vue';
 import QueueTable from './components/QueueTable.vue';
 import PurgeDialog from './components/PurgeDialog.vue';
+import QueueDrawer from './components/QueueDrawer.vue';
 
 const REFRESH = 10;
 const me = ref(null);
@@ -16,22 +17,45 @@ const clustersError = ref('');
 const selectedId = ref(store.get('hub.sel'));
 const queues = ref([]);
 const queuesError = ref('');
+const tab = ref('queues');
+const shovels = ref([]);
+const shovelsError = ref('');
+const shovelsLoading = ref(false);
+const openQueueName = ref('');
 const updatedAt = ref('');
 const tick = ref(0);
+const paused = ref(false);
 const purgeTarget = ref(null);
 const purgeBusy = ref(false);
 const purgeError = ref('');
 const toast = ref('');
 
 const selected = computed(() => clusters.value.find((c) => c.id === selectedId.value));
-const unhealthy = computed(() => clusters.value.filter((c) => !c.ok).length);
+// Each cluster keeps one identity hue (by config order) across cards, flow strip and charts.
+const colors = computed(() => Object.fromEntries(clusters.value.map((c, i) => [c.id, `var(--hue-${(i % 6) + 1})`])));
+const unhealthy = computed(() => clusters.value.filter((c) => !c.ok));
 const canPurge = computed(() => me.value?.role === 'admin' && !!selected.value?.allow_purge);
+const openQueue = computed(() => queues.value.find((q) => q.name === openQueueName.value) || null);
+
+/* ---- deep links: #cluster or #cluster/queue (plain hash only) ---- */
+function readHash() {
+  const h = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if (!h) return;
+  const [c, ...rest] = h.split('/');
+  if (c) selectedId.value = c;
+  openQueueName.value = rest.join('/') || '';
+}
+function writeHash() {
+  const h = selectedId.value ? encodeURIComponent(selectedId.value) + (openQueueName.value ? '/' + encodeURIComponent(openQueueName.value) : '') : '';
+  if (location.hash.replace(/^#/, '') !== h) history.replaceState(null, '', h ? '#' + h : location.pathname + location.search);
+}
 
 async function loadClusters() {
   try {
     clusters.value = await api.clusters();
     clustersError.value = '';
     if (!clusters.value.some((c) => c.id === selectedId.value)) selectedId.value = clusters.value[0]?.id;
+    if (tab.value === 'shovels' && !selected.value?.shovels) tab.value = 'queues';
     updatedAt.value = new Date().toLocaleTimeString('en-GB');
   } catch (e) { clustersError.value = e.message; }
 }
@@ -40,8 +64,25 @@ async function loadQueues() {
   try { queues.value = await api.queues(selectedId.value); queuesError.value = ''; }
   catch (e) { queuesError.value = e.message; }
 }
-async function refresh() { await loadClusters(); await loadQueues(); }
-function pick(id) { selectedId.value = id; store.set('hub.sel', id); queues.value = []; loadQueues(); }
+async function loadShovels() {
+  if (tab.value !== 'shovels' || !selectedId.value) return;
+  shovelsLoading.value = true;
+  try { shovels.value = await api.shovels(selectedId.value); shovelsError.value = ''; }
+  catch (e) { shovelsError.value = e.message; }
+  finally { shovelsLoading.value = false; }
+}
+async function refresh() { tick.value = 0; await loadClusters(); await Promise.all([loadQueues(), loadShovels()]); }
+function pick(id, queueName = '') {
+  if (id !== selectedId.value) { queues.value = []; shovels.value = []; }
+  selectedId.value = id; store.set('hub.sel', id);
+  openQueueName.value = queueName;
+  if (queueName) tab.value = 'queues';
+  writeHash(); loadQueues(); loadShovels();
+}
+function setTab(t) { tab.value = t; shovels.value = []; loadShovels(); }
+function openQ(name) { openQueueName.value = name; tab.value = 'queues'; writeHash(); }
+function closeQ() { openQueueName.value = ''; writeHash(); }
+function jumpToTrouble() { const c = unhealthy.value[0]; if (c) { pick(c.id); if (c.shovels?.bad?.length) setTab('shovels'); } }
 
 function openPurge(q) { purgeError.value = ''; purgeTarget.value = q; }
 async function confirmPurge(typed) {
@@ -58,18 +99,22 @@ let toastTimer;
 function showToast(t) { toast.value = t; clearTimeout(toastTimer); toastTimer = setTimeout(() => (toast.value = ''), 4500); }
 
 let timer;
+const onHash = () => { readHash(); loadQueues(); loadShovels(); };
 onMounted(async () => {
+  readHash();
+  window.addEventListener('hashchange', onHash);
   try {
     me.value = await api.me();
     if (me.value.title) document.title = me.value.title;
   } catch (e) { fatal.value = e.message; return; }
   await refresh();
   timer = setInterval(() => {
+    if (paused.value) return;
     tick.value = (tick.value + 1) % REFRESH;
     if (tick.value === 0 && !purgeTarget.value) refresh();
   }, 1000);
 });
-onBeforeUnmount(() => clearInterval(timer));
+onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashchange', onHash); });
 </script>
 
 <template>
@@ -82,22 +127,27 @@ onBeforeUnmount(() => clearInterval(timer));
     <div class="gutter mx-auto flex max-w-[1480px] flex-wrap items-center gap-x-4 gap-y-2 py-3">
       <div class="flex items-center gap-2.5">
         <span class="grid size-7 grid-cols-[repeat(3,4px)] place-content-center gap-[3px] rounded-[7px] bg-ink" aria-hidden="true">
-          <i v-for="n in 9" :key="n" class="size-1 rounded-[1px]" :class="n === 5 ? 'bg-signal' : 'bg-panel'"></i>
+          <i v-for="n in 9" :key="n" class="size-1 rounded-[1px]" :style="{ background: [1, 3, 7, 9].includes(n) ? 'var(--panel)' : `var(--hue-${[0, 0, 1, 0, 2, 3, 4, 0, 5, 0][n]})` }"></i>
         </span>
         <b class="text-[15px] font-bold tracking-tight">{{ me?.title || 'RabbitMQ Hub' }}</b>
-        <span class="label max-md:hidden">routing board</span>
       </div>
-      <span v-if="clusters.length" class="inline-flex items-center gap-2 rounded-md border px-2.5 py-1 font-mono text-xs font-medium"
-        :class="unhealthy ? 'border-transparent bg-stop-soft text-stop' : 'border-rule bg-panel-2'">
-        <span class="led" :class="unhealthy && 'off'"></span>
-        {{ unhealthy ? `${unhealthy}/${clusters.length} need attention` : `${clusters.length}/${clusters.length} healthy` }}
-      </span>
+      <button v-if="clusters.length" type="button" @click="jumpToTrouble" :disabled="!unhealthy.length"
+        :title="unhealthy.length ? 'Jump to ' + unhealthy.map((c) => c.name).join(', ') : ''"
+        class="inline-flex items-center gap-2 rounded-md border px-2.5 py-1 font-mono text-xs font-medium disabled:cursor-default"
+        :class="unhealthy.length ? 'border-transparent bg-stop-soft text-stop hover:border-stop' : 'border-rule bg-panel-2'">
+        <span class="led" :class="unhealthy.length && 'off'"></span>
+        {{ unhealthy.length ? `${unhealthy.length}/${clusters.length} need attention →` : `${clusters.length}/${clusters.length} healthy` }}
+      </button>
       <span class="flex-1"></span>
-      <span class="inline-flex items-center gap-2 font-mono text-[11px] text-ink-3 max-md:hidden" :title="`Refreshes every ${REFRESH}s`">
-        <span class="size-3.5 rounded-full" :style="{
-          background: `conic-gradient(var(--signal) ${(tick / REFRESH) * 100}%, var(--seg) 0)`,
-          mask: 'radial-gradient(circle, transparent 4px, #000 4.5px)', WebkitMask: 'radial-gradient(circle, transparent 4px, #000 4.5px)' }"></span>
-        {{ updatedAt || 'connecting' }}
+      <span class="inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-3">
+        <button type="button" class="inline-flex items-center gap-2 rounded px-1.5 py-1 hover:text-ink" @click="refresh" :title="`Refresh now (auto every ${REFRESH}s)`" aria-label="Refresh now">
+          <span class="size-3.5 rounded-full" :style="{
+            background: paused ? 'var(--seg)' : `conic-gradient(var(--signal) ${(tick / REFRESH) * 100}%, var(--seg) 0)`,
+            mask: 'radial-gradient(circle, transparent 4px, #000 4.5px)', WebkitMask: 'radial-gradient(circle, transparent 4px, #000 4.5px)' }"></span>
+          <span class="max-md:hidden">{{ updatedAt || 'connecting' }}</span>
+        </button>
+        <button type="button" class="rounded border border-rule px-1.5 py-0.5 text-[10px] uppercase tracking-[.06em] hover:text-ink" :aria-pressed="paused" @click="paused = !paused"
+          :class="paused && 'border-caution bg-caution-soft text-caution'">{{ paused ? 'Paused' : 'Pause' }}</button>
       </span>
       <ThemeToggle />
       <span v-if="me" class="inline-flex min-w-0 items-center gap-2 text-[13px] text-ink-2">
@@ -111,15 +161,19 @@ onBeforeUnmount(() => clearInterval(timer));
   <main class="gutter mx-auto grid max-w-[1480px] grid-cols-[minmax(0,1fr)] gap-4 pt-4 pb-10">
     <p v-if="fatal" class="m-0 font-mono text-[13px] text-stop">{{ fatal }}</p>
     <template v-else>
-      <FlowStrip :clusters="clusters" @pick="pick" />
+      <FlowStrip :clusters="clusters" :colors="colors" @pick="pick" />
       <p v-if="clustersError" class="m-0 font-mono text-[13px] text-stop">{{ clustersError }}</p>
       <p v-else-if="!clusters.length" class="m-0 text-ink-3">Loading clusters…</p>
       <section class="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Clusters">
-        <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :selected="c.id === selectedId" @pick="pick(c.id)" />
+        <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :color="colors[c.id]" :selected="c.id === selectedId" @pick="pick(c.id)" />
       </section>
-      <QueueTable :cluster="selected" :queues="queues" :can-purge="canPurge" :error="queuesError" @purge="openPurge" />
+      <QueueTable :cluster="selected" :color="colors[selectedId]" :queues="queues" :can-purge="canPurge" :error="queuesError" :tab="tab" :shovels="shovels"
+        :shovels-error="shovelsError" :shovels-loading="shovelsLoading" :active-queue="openQueueName"
+        @purge="openPurge" @open="openQ" @tab="setTab" />
     </template>
   </main>
+
+  <QueueDrawer :queue="openQueue" :cluster="selected" :me="me" @close="closeQ" @pick="pick" />
 
   <PurgeDialog :target="purgeTarget" :cluster-name="selected?.name" :busy="purgeBusy" :error="purgeError"
     @cancel="purgeTarget = null" @confirm="confirmPurge" />

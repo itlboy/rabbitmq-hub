@@ -14,6 +14,11 @@ export const api = {
   me: () => request('/api/me'),
   clusters: () => request('/api/clusters'),
   queues: (id) => request(`/api/clusters/${encodeURIComponent(id)}/queues`),
+  shovels: (id) => request(`/api/clusters/${encodeURIComponent(id)}/shovels`),
+  across: (name) => request(`/api/queue-across?name=${encodeURIComponent(name)}`),
+  peek: (id, body) => request(`/api/clusters/${encodeURIComponent(id)}/peek`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }),
   purge: (id, body) => request(`/api/clusters/${encodeURIComponent(id)}/purge`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }),

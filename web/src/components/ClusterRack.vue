@@ -1,8 +1,9 @@
 <script setup>
 // One cluster as an equipment rack: status LED, waiting messages, in/out rates, gauges, node units with a segmented RAM meter.
 import { fmt, rate, bytes } from '../format.js';
+import Sparkline from './Sparkline.vue';
 
-const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 } });
+const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 }, color: { type: String, default: 'var(--hue-1)' } });
 defineEmits(['pick']);
 
 function unit(n) {
@@ -14,10 +15,10 @@ function unit(n) {
 <template>
   <article role="button" tabindex="0" :aria-pressed="selected" @click="$emit('pick')" @keydown.enter.space.prevent="$emit('pick')"
     class="rack flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-panel text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.45)]"
-    :class="selected ? 'border-ink shadow-[0_0_0_1px_var(--ink)]' : 'border-rule'" :style="{ '--i': index }">
-    <header class="flex items-center gap-2 border-b border-dashed border-rule px-3.5 py-2.5" :class="cluster.ok ? 'bg-panel-2' : 'bg-stop-soft'">
+    :class="selected ? 'shadow-[0_0_0_2px_var(--cc)] border-transparent' : 'border-rule'" :style="{ '--i': index, '--cc': color }">
+    <header class="flex items-center gap-2 border-t-[3px] border-b border-b-rule border-dashed px-3.5 py-2.5" :style="{ borderTopColor: 'var(--cc)', borderTopStyle: 'solid', background: cluster.ok ? 'color-mix(in srgb, var(--cc) 9%, var(--panel))' : 'var(--stop-soft)' }">
       <span class="led" :class="!cluster.ok && 'off'"></span>
-      <h3 class="m-0 truncate text-[14px] font-bold tracking-tight">{{ cluster.name }}</h3>
+      <h3 class="m-0 truncate text-[14px] font-bold tracking-tight" style="color: color-mix(in srgb, var(--cc) 75%, var(--ink))">{{ cluster.name }}</h3>
       <span class="ml-auto whitespace-nowrap font-mono text-[11px] text-ink-3">{{ cluster.version ? 'v' + cluster.version : '' }}</span>
     </header>
 
@@ -31,13 +32,14 @@ function unit(n) {
             {{ fmt(cluster.messages?.messages) }}<small class="ml-1 text-[11px] font-normal tracking-normal text-ink-3">msg</small>
           </div>
         </div>
+        <Sparkline v-if="cluster.history?.messages?.length" :values="cluster.history.messages" :width="90" :height="26" :color="color" class="mb-0.5 min-w-0 flex-1" />
         <div class="grid shrink-0 justify-items-end font-mono text-[11px] leading-snug text-ink-2">
           <span>in <b class="font-semibold" :class="(cluster.rates?.publish || 0) > 0 ? 'text-signal' : 'text-ink'">{{ rate(cluster.rates?.publish) }}</b>/s</span>
-          <span>out <b class="font-semibold text-ink">{{ rate(cluster.rates?.deliver) }}</b>/s</span>
+          <span>out <b class="font-semibold" :class="(cluster.rates?.deliver || 0) > 0 ? 'text-out' : 'text-ink'">{{ rate(cluster.rates?.deliver) }}</b>/s</span>
         </div>
       </div>
 
-      <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule">
+      <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule" style="background: color-mix(in srgb, var(--cc) 4%, var(--panel))">
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">queues</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">conns</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>

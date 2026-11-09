@@ -65,9 +65,20 @@ function matchEmail(email, patterns) {
 }
 function roleOf(email) {
   if (matchEmail(email, config.users.admins)) return 'admin';
+  if (matchEmail(email, config.users.peekers)) return 'peeker';
   if (matchEmail(email, config.users.viewers)) return 'viewer';
   return null;
 }
+// Reading message bodies may expose customer data: admins + users.peekers only.
+const canPeek = (role) => role === 'admin' || role === 'peeker';
+const PEEK_MAX = () => Math.min(50, Math.max(1, Number(config.peek_max || 10)));
+// Short history for sparklines: last 10 minutes, one sample every 30 s (from the management API, no storage).
+const HIST = 'lengths_age=600&lengths_incr=30&msg_rates_age=600&msg_rates_incr=30';
+const series = (d) => (d?.samples || []).slice().reverse().map((x) => x.sample);
+const rateSeries = (d) => {
+  const s = (d?.samples || []).slice().reverse();
+  return s.slice(1).map((x, i) => Math.max(0, (x.sample - s[i].sample) / ((x.timestamp - s[i].timestamp) / 1000 || 1)));
+};
 
 // ---------------- RabbitMQ management API ----------------
 function clusterById(id) { return (config.clusters || []).find((c) => c.id === id); }
@@ -87,15 +98,20 @@ async function rmq(cluster, method, p, timeoutMs = 8000) {
 const enc = encodeURIComponent;
 
 async function clusterSummary(c) {
-  const out = { id: c.id, name: c.name, role: c.role || '', allow_purge: !!c.allow_purge, forwards_to: c.forwards_to || null, ok: false, problems: [] };
+  const out = { id: c.id, name: c.name, role: c.role || '', allow_purge: !!c.allow_purge, allow_peek: c.allow_peek !== false, forwards_to: c.forwards_to || null, ok: false, problems: [] };
   try {
-    const [ov, nodes] = await Promise.all([rmq(c, 'GET', '/overview'), rmq(c, 'GET', '/nodes')]);
+    const [ov, nodes] = await Promise.all([rmq(c, 'GET', `/overview?${HIST}`), rmq(c, 'GET', '/nodes')]);
     out.version = ov.rabbitmq_version;
     out.totals = ov.object_totals;
     out.messages = ov.queue_totals || {};
     out.rates = {
       publish: ov.message_stats?.publish_details?.rate || 0,
       deliver: ov.message_stats?.deliver_get_details?.rate || 0,
+    };
+    out.history = {
+      messages: series(ov.queue_totals?.messages_details),
+      publish: rateSeries(ov.message_stats?.publish_details),
+      deliver: rateSeries(ov.message_stats?.deliver_get_details),
     };
     out.nodes = nodes.map((n) => ({
       name: n.name.split('@')[1]?.split('.')[0] || n.name, running: n.running,
@@ -115,7 +131,7 @@ async function clusterSummary(c) {
       const sh = await rmq(c, 'GET', '/shovels');
       out.shovels = { total: sh.length, running: sh.filter((s) => s.state === 'running').length,
         bad: sh.filter((s) => s.state !== 'running').map((s) => `${s.name}=${s.state}`) };
-      if (out.shovels.bad.length) out.problems.push(`${out.shovels.bad.length} shovel(s) not running`);
+      if (out.shovels.bad.length) out.problems.push(...out.shovels.bad.slice(0, 3).map((b) => `shovel ${b}`));
     } catch { out.shovels = null; }
     out.ok = out.problems.length === 0;
   } catch (e) {
@@ -125,14 +141,63 @@ async function clusterSummary(c) {
 }
 
 async function clusterQueues(c) {
-  const cols = 'name,vhost,type,state,messages,messages_ready,messages_unacknowledged,consumers,message_stats.publish_details.rate,message_stats.deliver_get_details.rate';
-  const qs = await rmq(c, 'GET', `/queues?columns=${cols}`, 15000);
+  const cols = 'name,vhost,type,state,messages,messages_ready,messages_unacknowledged,consumers,messages_details,message_stats';
+  const qs = await rmq(c, 'GET', `/queues?columns=${cols}&${HIST}`, 15000);
   const hidden = c.hide_queue_pattern ? new RegExp(c.hide_queue_pattern) : null;
   return qs.map((q) => ({
     name: q.name, vhost: q.vhost, type: q.type, state: q.state, messages: q.messages || 0,
     ready: q.messages_ready || 0, unacked: q.messages_unacknowledged || 0, consumers: q.consumers || 0,
     publish: q.message_stats?.publish_details?.rate || 0, deliver: q.message_stats?.deliver_get_details?.rate || 0,
     minor: hidden ? hidden.test(q.name) : false,
+    hot: (c.warn_threshold?.[q.name] ?? c.warn_messages ?? 1000) < (q.messages || 0),
+    history: series(q.messages_details),
+  }));
+}
+
+async function clusterShovels(c) {
+  const sh = await rmq(c, 'GET', '/shovels');
+  return sh.map((s) => ({
+    name: s.name, vhost: s.vhost, state: s.state, type: s.type,
+    node: s.node?.split('@')[1]?.split('.')[0] || s.node,
+    src: s.src_queue || s.src_exchange || '', dest: s.dest_queue || s.dest_exchange || '',
+    dest_uri: String(s.dest_uri || '').replace(/\/\/[^@/]*@/, '//***@'),   // never leak credentials
+    reason: s.reason ? String(s.reason).slice(0, 300) : (s.blocked_status && s.blocked_status !== 'running' ? s.blocked_status : null),
+    last_changed: s.timestamp || null,
+  }));
+}
+
+// One queue name across every cluster — shows where messages pile up on the way edge → hub.
+async function queueAcross(name) {
+  return Promise.all((config.clusters || []).map(async (c) => {
+    try {
+      const qs = await rmq(c, 'GET', `/queues?columns=name,vhost,type,messages,consumers,message_stats&name=${enc('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')}&use_regex=true`);
+      let shovel = null;
+      try {
+        const sh = await rmq(c, 'GET', '/shovels');
+        const s = sh.find((x) => x.src_queue === name);
+        if (s) shovel = s.state;
+      } catch { /* no shovel plugin */ }
+      const q = qs[0];
+      return { id: c.id, name: c.name, forwards_to: c.forwards_to || null, found: !!q, vhost: q?.vhost, type: q?.type,
+        messages: q?.messages || 0, consumers: q?.consumers || 0,
+        publish: q?.message_stats?.publish_details?.rate || 0, deliver: q?.message_stats?.deliver_get_details?.rate || 0, shovel };
+    } catch (e) { return { id: c.id, name: c.name, error: e.message }; }
+  }));
+}
+
+// Peek: get N messages and put them straight back (ack_requeue_true). Side effects: the messages are marked
+// redelivered, order may change, and on quorum queues the delivery count goes up (delivery-limit!).
+async function peek(c, vhost, queue, count) {
+  const r = await fetch(c.api.replace(/\/$/, '') + `/queues/${enc(vhost)}/${enc(queue)}/get`, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from(`${RMQ_USER}:${RMQ_PASS}`).toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ count, ackmode: 'ack_requeue_true', encoding: 'auto', truncate: 65536 }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()).map((m) => ({
+    payload: m.payload, encoding: m.payload_encoding, bytes: m.payload_bytes, redelivered: m.redelivered,
+    exchange: m.exchange, routing_key: m.routing_key, properties: m.properties || {},
   }));
 }
 
@@ -186,13 +251,38 @@ http.createServer(async (req, res) => {
   if (!role) return send(res, 403, { error: `${email} has no access — ask an admin to add you to config.json` });
 
   try {
-    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, title: config.title || 'RabbitMQ Hub' });
+    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, can_peek: canPeek(role), peek_max: PEEK_MAX(), title: config.title || 'RabbitMQ Hub' });
     if (req.method === 'GET' && url.pathname === '/api/clusters')
       return send(res, 200, await Promise.all((config.clusters || []).map(clusterSummary)));
     let m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/queues$/);
     if (req.method === 'GET' && m) {
       const c = clusterById(m[1]); if (!c) return send(res, 404, { error: 'unknown cluster' });
       return send(res, 200, await clusterQueues(c));
+    }
+    m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/shovels$/);
+    if (req.method === 'GET' && m) {
+      const c = clusterById(m[1]); if (!c) return send(res, 404, { error: 'unknown cluster' });
+      return send(res, 200, await clusterShovels(c));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/queue-across') {
+      const name = url.searchParams.get('name') || '';
+      if (!name || name.length > 255) return send(res, 400, { error: 'name required' });
+      return send(res, 200, await queueAcross(name));
+    }
+    m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/peek$/);
+    if (req.method === 'POST' && m) {
+      if (!String(req.headers['content-type'] || '').startsWith('application/json') ||
+          (req.headers.origin && config.public_origin && req.headers.origin !== config.public_origin))
+        return send(res, 400, { error: 'invalid request' });
+      if (!canPeek(role)) return send(res, 403, { error: 'reading message bodies needs admin or peeker access' });
+      const c = clusterById(m[1]); if (!c) return send(res, 404, { error: 'unknown cluster' });
+      if (c.allow_peek === false) return send(res, 403, { error: `peek is disabled for ${c.name} (allow_peek=false)` });
+      const b = await readBody(req);
+      if (!b.vhost || !b.queue) return send(res, 400, { error: 'vhost and queue required' });
+      const count = Math.min(PEEK_MAX(), Math.max(1, Number(b.count) || 5));
+      const msgs = await peek(c, b.vhost, b.queue, count);
+      await audit(`🔎 **RabbitMQ Hub — peek** ${msgs.length} message(s) from \`${b.queue}\` (vhost \`${b.vhost}\`) on **${c.name}** (requeued)\n**By:** ${email}\n**At:** ${new Date().toLocaleString('en-GB', { timeZone: TZ })} (${TZ})`);
+      return send(res, 200, msgs);
     }
     m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/purge$/);
     if (req.method === 'POST' && m) {
