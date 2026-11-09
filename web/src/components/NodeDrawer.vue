@@ -27,7 +27,7 @@ const summary = computed(() => {
   if (r.some((n) => [n.ramLevel, n.diskLevel, n.cpuLevel].includes('warn'))) return { level: 'warn', text: 'All nodes running; one resource is getting close to its limit.' };
   return { level: 'ok', text: `All ${r.length} node(s) running with plenty of headroom.` };
 });
-const tone = { ok: 'text-ink', warn: 'text-caution', crit: 'text-stop' };
+const tone = { ok: 'text-go', warn: 'text-caution', crit: 'text-stop' };
 const bar = { ok: 'bg-go', warn: 'bg-caution', crit: 'bg-stop' };
 function uptime(ms) {
   if (!ms) return '—';
@@ -79,6 +79,8 @@ function uptime(ms) {
 
         <section class="space-y-2 border-t border-rule pt-4 text-[13px] leading-relaxed text-ink-2">
           <h3 class="label m-0">What these mean</h3>
+          <p class="m-0"><span class="font-semibold text-go">Green</span> = well within limits · <span class="font-semibold text-caution">amber</span> = getting close · <span class="font-semibold text-stop">red</span> = at or over the limit, act now.
+            Thresholds: RAM amber from 75%, red from 90% · Disk amber below 5× the limit, red below 2× · CPU load amber from 0.7, red from 1.</p>
           <p class="m-0"><b class="text-ink">RAM</b> — memory used as a share of the limit (watermark). At 100% RabbitMQ <b>stops accepting new messages</b> until memory drops; publishing apps slow down or time out. A big backlog is the usual cause.</p>
           <p class="m-0"><b class="text-ink">Disk</b> — free space for message data. Below the limit RabbitMQ <b>blocks publishers</b> to protect its data. Several times the limit free is comfortable.</p>
           <p class="m-0"><b class="text-ink">CPU load</b> — processes waiting for a CPU core ÷ number of cores (RabbitMQ has no CPU %). Under 1 the CPU keeps up; over 1 work queues for the CPU and messages are handled late. In Kubernetes the core count is the whole machine's.</p>

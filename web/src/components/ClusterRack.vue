@@ -64,10 +64,10 @@ function unit(n) {
 
       <!-- One summary row for the whole cluster (worst node wins); click for every node -->
       <button v-if="cluster.nodes?.length" type="button" @click.stop="$emit('nodes')" title="Show every node"
-        class="grid grid-cols-4 divide-x divide-rule rounded-lg border border-rule text-left transition-colors hover:border-ink-3">
-        <span v-for="r in resources" :key="r.label" class="min-w-0 px-2.5 py-1.5" :class="r.level === 'crit' ? 'bg-stop-soft' : r.level === 'warn' ? 'bg-caution-soft' : ''">
+        class="grid grid-cols-4 divide-x divide-rule overflow-hidden rounded-lg border border-rule text-left transition-colors hover:border-ink-3">
+        <span v-for="r in resources" :key="r.label" class="min-w-0 px-2.5 py-1.5" :class="r.level === 'crit' ? 'bg-stop-soft' : r.level === 'warn' ? 'bg-caution-soft' : 'bg-go-soft'">
           <span class="label block">{{ r.label }}</span>
-          <span class="block truncate font-mono text-[14px] font-semibold tabular-nums" :class="r.level === 'crit' ? 'text-stop' : r.level === 'warn' ? 'text-caution' : 'text-ink'" :title="r.title">{{ r.value }}</span>
+          <span class="block truncate font-mono text-[14px] font-semibold tabular-nums" :class="r.level === 'crit' ? 'text-stop' : r.level === 'warn' ? 'text-caution' : 'text-go'" :title="r.title">{{ r.value }}</span>
         </span>
       </button>
 
