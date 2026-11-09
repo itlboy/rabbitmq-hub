@@ -40,7 +40,7 @@ function uptime(ms) {
   <Transition enter-from-class="translate-x-full" enter-active-class="transition duration-200" leave-to-class="translate-x-full" leave-active-class="transition duration-150">
     <aside v-if="cluster" class="fixed inset-y-0 right-0 z-[15] flex w-full max-w-[560px] flex-col border-l border-rule bg-panel shadow-[-20px_0_60px_-30px_rgba(0,0,0,.5)]"
       role="dialog" :aria-label="`Nodes of ${cluster.name}`" @keydown.esc="emit('close')">
-      <header class="flex items-start gap-3 border-b border-rule px-5 py-4" :style="{ background: `color-mix(in srgb, ${color} 8%, var(--panel))` }">
+      <header class="flex items-start gap-3 border-b border-rule bg-panel-2 px-5 py-4">
         <div class="min-w-0 flex-1">
           <span class="label">nodes · RabbitMQ {{ cluster.version }}</span>
           <h2 class="m-0 mt-0.5 text-[17px] font-bold">{{ cluster.name }}</h2>

@@ -32,10 +32,10 @@ function unit(n) {
 <template>
   <article role="button" tabindex="0" :aria-pressed="selected" @click="$emit('pick')" @keydown.enter.space.prevent="$emit('pick')"
     class="rack flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border bg-panel text-left transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.45)]"
-    :class="selected ? 'shadow-[0_8px_24px_-14px_var(--cc)]' : 'border-rule'" :style="{ '--i': index, '--cc': color, ...(selected ? { borderColor: color } : {}) }">
-    <header class="flex items-center gap-2 border-b border-dashed border-rule px-3.5 py-2.5" :style="{ background: cluster.ok ? 'color-mix(in srgb, var(--cc) 10%, var(--panel))' : 'var(--stop-soft)' }">
+    :class="selected ? 'border-ink-3 shadow-[0_8px_24px_-16px_rgba(0,0,0,.35)]' : 'border-rule'" :style="{ '--i': index, '--cc': color }">
+    <header class="flex items-center gap-2 border-b border-dashed border-rule px-3.5 py-2.5" :class="cluster.ok ? 'bg-panel-2' : 'bg-stop-soft'">
       <span class="led" :class="!cluster.ok && 'off'"></span>
-      <h3 class="m-0 truncate text-[14px] font-bold tracking-tight" style="color: color-mix(in srgb, var(--cc) 75%, var(--ink))">{{ cluster.name }}</h3>
+      <h3 class="m-0 truncate text-[14px] font-bold tracking-tight">{{ cluster.name }}</h3>
       <span class="ml-auto whitespace-nowrap font-mono text-[11px] text-ink-3">{{ cluster.version ? 'v' + cluster.version : '' }}</span>
     </header>
 
@@ -56,7 +56,7 @@ function unit(n) {
         </div>
       </div>
 
-      <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule" style="background: color-mix(in srgb, var(--cc) 4%, var(--panel))">
+      <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule">
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">queues</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">conns</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
         <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>

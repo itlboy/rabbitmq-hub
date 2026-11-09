@@ -23,9 +23,9 @@ const wire = computed(() => {
       <button v-for="c in sources" :key="c.id" type="button" @click="emit('pick', c.id)"
         class="flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors hover:border-ink-3"
         :class="healthy(c) ? 'border-rule' : 'border-stop/60 bg-stop-soft'"
-        :style="healthy(c) ? { background: `color-mix(in srgb, ${colors[c.id]} 8%, var(--panel))` } : {}">
+        :style="healthy(c) ? { background: 'var(--panel-2)' } : {}">
         <span class="led" :class="!c.ok && 'off'"></span>
-        <span class="truncate text-[13px] font-semibold" :style="{ color: `color-mix(in srgb, ${colors[c.id]} 75%, var(--ink))` }">{{ c.name }}</span>
+        <span class="truncate text-[13px] font-semibold">{{ c.name }}</span>
         <span class="whitespace-nowrap font-mono text-[11px] text-ink-2">
           {{ rate(c.rates?.publish) }}/s<template v-if="c.shovels"> · {{ c.shovels.running }}/{{ c.shovels.total }} sh</template>
         </span>
@@ -37,9 +37,9 @@ const wire = computed(() => {
     </svg>
     <span class="font-mono text-xs text-signal md:hidden" aria-hidden="true">→</span>
     <button type="button" @click="emit('pick', hub.id)"
-      class="flex items-center gap-2 rounded-md border border-rule px-2.5 py-1.5 text-left transition-colors hover:border-ink-3" :style="{ background: `color-mix(in srgb, ${colors[hub.id]} 10%, var(--panel))` }">
+      class="flex items-center gap-2 rounded-md border border-rule px-2.5 py-1.5 text-left transition-colors hover:border-ink-3" style="background: var(--panel-2)">
       <span class="led" :class="!hub.ok && 'off'"></span>
-      <span class="text-[13px] font-semibold" :style="{ color: `color-mix(in srgb, ${colors[hub.id]} 75%, var(--ink))` }">{{ hub.name }}</span>
+      <span class="text-[13px] font-semibold">{{ hub.name }}</span>
       <span class="font-mono text-[15px] font-semibold tabular-nums">{{ fmt(hub.messages?.messages) }}</span>
       <span class="font-mono text-[11px] text-ink-3">waiting · <b class="font-semibold text-out">{{ rate(hub.rates?.deliver) }}</b>/s out</span>
     </button>

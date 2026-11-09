@@ -33,8 +33,8 @@ const purgeError = ref('');
 const toast = ref('');
 
 const selected = computed(() => clusters.value.find((c) => c.id === selectedId.value));
-// Each cluster keeps one identity hue (by config order) across cards, flow strip and charts.
-const colors = computed(() => Object.fromEntries(clusters.value.map((c, i) => [c.id, `var(--hue-${(i % 6) + 1})`])));
+// One neutral accent for every cluster (colour is reserved for status: green / amber / red).
+const colors = computed(() => Object.fromEntries(clusters.value.map((c) => [c.id, 'var(--hue-1)'])));
 const unhealthy = computed(() => clusters.value.filter((c) => !c.ok));
 const canPurge = computed(() => me.value?.role === 'admin' && !!selected.value?.allow_purge);
 const openQueue = computed(() => queues.value.find((q) => q.name === openQueueName.value) || null);
