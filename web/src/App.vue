@@ -9,6 +9,7 @@ import QueueTable from './components/QueueTable.vue';
 import PurgeDialog from './components/PurgeDialog.vue';
 import QueueDrawer from './components/QueueDrawer.vue';
 import NodeDrawer from './components/NodeDrawer.vue';
+import Spinner from './components/Spinner.vue';
 
 const REFRESH = 10;
 const me = ref(null);
@@ -19,6 +20,8 @@ const selectedId = ref(store.get('hub.sel'));
 const queues = ref([]);
 const queuesError = ref('');
 const tab = ref('queues');
+const queuesLoading = ref(false);
+const refreshing = ref(false);
 const shovels = ref([]);
 const shovelsError = ref('');
 const shovelsLoading = ref(false);
@@ -65,8 +68,11 @@ async function loadClusters() {
 }
 async function loadQueues() {
   if (!selectedId.value) return;
-  try { queues.value = await api.queues(selectedId.value); queuesError.value = ''; }
+  const id = selectedId.value;
+  queuesLoading.value = true;
+  try { const q = await api.queues(id); if (id === selectedId.value) { queues.value = q; queuesError.value = ''; } }
   catch (e) { queuesError.value = e.message; }
+  finally { if (id === selectedId.value) queuesLoading.value = false; }
 }
 async function loadShovels() {
   if (tab.value !== 'shovels' || !selectedId.value) return;
@@ -75,7 +81,12 @@ async function loadShovels() {
   catch (e) { shovelsError.value = e.message; }
   finally { shovelsLoading.value = false; }
 }
-async function refresh() { tick.value = 0; await loadClusters(); await Promise.all([loadQueues(), loadShovels()]); }
+async function refresh() {
+  if (refreshing.value) return;
+  refreshing.value = true; tick.value = 0;
+  try { await loadClusters(); await Promise.all([loadQueues(), loadShovels()]); }
+  finally { refreshing.value = false; }
+}
 function pick(id, queueName = '') {
   if (id !== selectedId.value) { queues.value = []; shovels.value = []; }
   selectedId.value = id; store.set('hub.sel', id);
@@ -145,7 +156,8 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
       <span class="flex-1"></span>
       <span class="inline-flex items-center gap-1.5 font-mono text-[11px] text-ink-3">
         <button type="button" class="inline-flex items-center gap-2 rounded px-1.5 py-1 hover:text-ink" @click="refresh" :title="`Refresh now (auto every ${REFRESH}s)`" aria-label="Refresh now">
-          <span class="size-3.5 rounded-full" :style="{
+          <Spinner v-if="refreshing" :size="14" />
+          <span v-else class="size-3.5 rounded-full" :style="{
             background: paused ? 'var(--seg)' : `conic-gradient(var(--signal) ${(tick / REFRESH) * 100}%, var(--seg) 0)`,
             mask: 'radial-gradient(circle, transparent 4px, #000 4.5px)', WebkitMask: 'radial-gradient(circle, transparent 4px, #000 4.5px)' }"></span>
           <span class="max-md:hidden">{{ updatedAt || 'connecting' }}</span>
@@ -167,11 +179,20 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
     <template v-else>
       <FlowStrip :clusters="clusters" :colors="colors" @pick="pick" />
       <p v-if="clustersError" class="m-0 font-mono text-[13px] text-stop">{{ clustersError }}</p>
-      <p v-else-if="!clusters.length" class="m-0 text-ink-3">Loading clusters…</p>
+      <template v-else-if="!clusters.length">
+        <div class="h-[54px] animate-pulse rounded-xl border border-rule bg-panel"></div>
+        <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading clusters" aria-busy="true">
+          <div v-for="n in 4" :key="n" class="grid h-[300px] animate-pulse content-start gap-3 overflow-hidden rounded-xl border border-rule bg-panel p-4">
+            <div class="h-4 w-1/2 rounded bg-seg"></div><div class="h-3 w-2/3 rounded bg-seg"></div>
+            <div class="mt-3 h-8 w-1/3 rounded bg-seg"></div><div class="h-12 rounded-lg bg-seg"></div><div class="h-12 rounded-lg bg-seg"></div>
+          </div>
+        </section>
+        <Spinner label="Connecting to clusters…" />
+      </template>
       <section class="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Clusters">
         <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :color="colors[c.id]" :selected="c.id === selectedId" @pick="pick(c.id)" @nodes="showNodes(c.id)" />
       </section>
-      <QueueTable :cluster="selected" :color="colors[selectedId]" :queues="queues" :can-purge="canPurge" :error="queuesError" :tab="tab" :shovels="shovels"
+      <QueueTable :cluster="selected" :color="colors[selectedId]" :queues="queues" :loading="queuesLoading" :can-purge="canPurge" :error="queuesError" :tab="tab" :shovels="shovels"
         :shovels-error="shovelsError" :shovels-loading="shovelsLoading" :active-queue="openQueueName"
         @purge="openPurge" @open="openQ" @tab="setTab" />
     </template>

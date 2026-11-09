@@ -1,4 +1,5 @@
 <script setup>
+import Spinner from './Spinner.vue';
 defineProps({ shovels: { type: Array, default: () => [] }, error: String, loading: Boolean });
 defineEmits(['open']);
 </script>
@@ -14,7 +15,7 @@ defineEmits(['open']);
       </thead>
       <tbody class="font-mono text-xs">
         <tr v-if="error"><td colspan="6" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
-        <tr v-else-if="loading && !shovels.length"><td colspan="6" class="px-4 py-10 text-center font-sans text-ink-3">Loading shovels…</td></tr>
+        <tr v-else-if="loading && !shovels.length"><td colspan="6" class="px-4 py-10 text-center"><Spinner label="Loading shovels…" /></td></tr>
         <tr v-else-if="!shovels.length"><td colspan="6" class="px-4 py-10 text-center font-sans text-ink-3">No shovels on this cluster.</td></tr>
         <tr v-for="s in shovels" :key="s.vhost + s.name" class="border-b border-rule last:border-0"
           :class="s.state === 'running' ? 'hover:bg-panel-2' : 'bg-stop-soft'">

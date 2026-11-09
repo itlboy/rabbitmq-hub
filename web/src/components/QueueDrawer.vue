@@ -5,12 +5,14 @@ import { computed, ref, watch } from 'vue';
 import { api } from '../api.js';
 import { fmt, rate } from '../format.js';
 import Sparkline from './Sparkline.vue';
+import Spinner from './Spinner.vue';
 
 const props = defineProps({ queue: Object, cluster: Object, me: Object });
 const emit = defineEmits(['close', 'pick']);
 
 const across = ref([]);
 const acrossError = ref('');
+const acrossLoading = ref(false);
 const peekCount = ref(5);
 const peeked = ref(null);
 const peekBusy = ref(false);
@@ -28,7 +30,9 @@ const path = computed(() => {
 watch(() => props.queue?.name, async (name) => {
   peeked.value = null; peekError.value = ''; open.value = new Set(); across.value = []; acrossError.value = '';
   if (!name) return;
+  acrossLoading.value = true;
   try { across.value = await api.across(name); } catch (e) { acrossError.value = e.message; }
+  finally { acrossLoading.value = false; }
 }, { immediate: true });
 
 async function doPeek() {
@@ -81,6 +85,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
         <section class="space-y-2">
           <h3 class="label m-0">This queue on every cluster</h3>
           <p v-if="acrossError" class="m-0 font-mono text-xs text-stop">{{ acrossError }}</p>
+          <div v-else-if="acrossLoading" class="py-2"><Spinner label="Checking every cluster…" /></div>
           <ol v-else class="m-0 grid list-none gap-1.5 p-0">
             <li v-for="c in path" :key="c.id">
               <button type="button" @click="emit('pick', c.id, queue.name)" :disabled="!c.found"
@@ -117,7 +122,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
                 <option v-for="n in [1, 3, 5, 10].filter((n) => n <= (me.peek_max || 10))" :key="n" :value="n">{{ n }}</option>
               </select>
               <span class="text-[13px] text-ink-2">messages</span>
-              <button type="submit" class="btn ml-auto border-ink text-ink" :disabled="peekBusy || !queue.messages">{{ peekBusy ? 'Reading…' : 'Read messages' }}</button>
+              <button type="submit" class="btn ml-auto border-ink text-ink" :disabled="peekBusy || !queue.messages"><Spinner v-if="peekBusy" :size="12" /> {{ peekBusy ? 'Reading…' : 'Read messages' }}</button>
             </form>
             <p v-if="!queue.messages" class="m-0 text-[13px] text-ink-3">The queue is empty.</p>
             <p v-if="peekError" class="m-0 font-mono text-xs text-stop">{{ peekError }}</p>

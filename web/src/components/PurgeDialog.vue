@@ -2,6 +2,7 @@
 // Empty-queue confirmation: the button only arms once the exact queue name is typed.
 import { computed, nextTick, ref, watch } from 'vue';
 import { fmt } from '../format.js';
+import Spinner from './Spinner.vue';
 
 const props = defineProps({ target: Object, clusterName: String, busy: Boolean, error: String });
 const emit = defineEmits(['cancel', 'confirm']);
@@ -31,7 +32,7 @@ function onKey(e) { if (e.key === 'Escape') emit('cancel'); }
       <div class="flex justify-end gap-2">
         <button type="button" class="btn px-3.5 py-2" @click="emit('cancel')">Cancel</button>
         <button type="submit" class="btn border-stop bg-stop px-3.5 py-2 text-white hover:enabled:border-stop hover:enabled:text-white hover:enabled:brightness-110" :disabled="!armed || busy">
-          {{ busy ? 'Emptying…' : 'Empty queue' }}
+          <Spinner v-if="busy" :size="12" /> {{ busy ? 'Emptying…' : 'Empty queue' }}
         </button>
       </div>
     </form>

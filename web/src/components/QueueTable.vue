@@ -3,9 +3,10 @@ import { computed, ref } from 'vue';
 import { fmt, rate } from '../format.js';
 import Sparkline from './Sparkline.vue';
 import ShovelList from './ShovelList.vue';
+import Spinner from './Spinner.vue';
 
 const props = defineProps({ cluster: Object, queues: { type: Array, default: () => [] }, canPurge: Boolean, error: String,
-  tab: { type: String, default: 'queues' }, color: { type: String, default: 'var(--signal)' }, shovels: { type: Array, default: () => [] }, shovelsError: String, shovelsLoading: Boolean, activeQueue: String });
+  tab: { type: String, default: 'queues' }, color: { type: String, default: 'var(--signal)' }, shovels: { type: Array, default: () => [] }, shovelsError: String, shovelsLoading: Boolean, activeQueue: String, loading: Boolean });
 const emit = defineEmits(['purge', 'open', 'tab']);
 
 const filter = ref('');
@@ -68,6 +69,7 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
         </thead>
         <tbody class="font-mono text-xs tabular-nums">
           <tr v-if="error"><td colspan="9" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
+          <tr v-else-if="loading && !queues.length"><td colspan="9" class="px-4 py-10 text-center"><Spinner label="Loading queues…" /></td></tr>
           <tr v-else-if="!rows.length"><td colspan="9" class="px-4 py-10 text-center font-sans text-ink-3">{{ queues.length ? 'No queues match these filters.' : cluster ? 'This cluster has no queues yet.' : 'Pick a cluster to read its queues.' }}</td></tr>
           <tr v-for="q in rows" :key="q.vhost + q.name" class="group cursor-pointer border-b border-rule last:border-0"
             :class="[(q.hot ?? q.messages > 1000) ? 'bg-caution-soft/70' : 'hover:bg-panel-2', activeQueue === q.name && '!bg-panel-2']"
