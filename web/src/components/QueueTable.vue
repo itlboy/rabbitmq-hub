@@ -70,7 +70,7 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
           <tr v-if="error"><td colspan="9" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
           <tr v-else-if="!rows.length"><td colspan="9" class="px-4 py-10 text-center font-sans text-ink-3">{{ queues.length ? 'No queues match these filters.' : cluster ? 'This cluster has no queues yet.' : 'Pick a cluster to read its queues.' }}</td></tr>
           <tr v-for="q in rows" :key="q.vhost + q.name" class="group cursor-pointer border-b border-rule last:border-0"
-            :class="[(q.hot ?? q.messages > 1000) ? 'bg-caution-soft/70 shadow-[inset_3px_0_0_var(--caution)]' : 'hover:bg-panel-2', activeQueue === q.name && 'outline outline-2 -outline-offset-2 outline-ink']"
+            :class="[(q.hot ?? q.messages > 1000) ? 'bg-caution-soft/70' : 'hover:bg-panel-2', activeQueue === q.name && '!bg-panel-2']"
             tabindex="0" @click="emit('open', q.name)" @keydown.enter="emit('open', q.name)">
             <td class="px-3.5 py-2.5 font-medium whitespace-nowrap text-ink">{{ q.name }}</td>
             <td class="px-3.5 py-2.5">
