@@ -26,8 +26,10 @@ const rows = computed(() => {
   return r.sort((a, b) => { const x = a[k], y = b[k]; const d = typeof x === 'string' ? x.localeCompare(y) : x - y; return sortDesc.value ? -d : d; });
 });
 const max = computed(() => Math.max(1, ...rows.value.map((q) => q.messages)));
-// Waiting messages, no consumer and nothing being taken out: probably no worker at all.
-const stuck = (q) => !q.consumers && q.messages > 0 && !q.deliver && !q.minor;
+// Really stuck = READY messages nobody takes: no consumer, nothing delivered right now, and the queue was never empty
+// in the 10-minute history. Unacked messages are already being processed (workers polling with basic.get show 0 consumers).
+const stuck = (q) => !q.minor && !q.consumers && q.ready > 0 && !q.deliver
+  && (q.history?.length >= 4 ? Math.min(...q.history) > 0 : false);
 function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k !== 'name'; sortKey.value = k; }
 </script>
 
@@ -89,7 +91,7 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
             </td>
             <td class="px-3 py-1.5 text-right" :class="!q.ready && 'text-ink-3/60'">{{ fmt(q.ready) }}</td>
             <td class="px-3 py-1.5 text-right" :class="!q.unacked && 'text-ink-3/60'">{{ fmt(q.unacked) }}</td>
-            <td class="px-3 py-1.5 text-right" :class="!q.consumers ? (stuck(q) ? 'font-semibold text-stop' : 'text-ink-3/60') : ''" :title="stuck(q) ? 'Messages waiting, no consumer and nothing taken out — is any worker running?' : !q.consumers && q.deliver ? 'No consumer attached, but messages are being taken out (workers polling with basic.get)' : ''">{{ fmt(q.consumers) }}<span v-if="stuck(q)" class="ml-1">!</span></td>
+            <td class="px-3 py-1.5 text-right" :class="!q.consumers ? (stuck(q) ? 'font-semibold text-stop' : 'text-ink-3/60') : ''" :title="stuck(q) ? 'Ready messages untouched for 10 minutes and no consumer — is any worker reading this queue?' : !q.consumers && (q.deliver || q.unacked) ? 'No consumer attached, but workers are taking messages (polling with basic.get)' : ''">{{ fmt(q.consumers) }}<span v-if="stuck(q)" class="ml-1">!</span></td>
             <td class="px-3 py-1.5 text-right" :class="q.publish ? 'text-signal' : 'text-ink-3/60'">{{ rate(q.publish) }}</td>
             <td class="px-3 py-1.5 text-right" :class="q.deliver ? 'text-out' : 'text-ink-3/60'">{{ rate(q.deliver) }}</td>
             <td class="w-px py-1 pr-3 pl-1">
