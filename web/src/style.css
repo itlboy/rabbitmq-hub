@@ -5,18 +5,18 @@
   --bg:#eef0ec; --grid:#d9ddd6; --panel:#fbfbf8; --panel-2:#f3f4ef; --ink:#14181a; --ink-2:#4c5559; --ink-3:#7d878a; --rule:#d6dad3;
   --signal:#d9530d; --signal-soft:#fbe7da; --go:#14834a; --go-glow:rgba(20,131,74,.35); --stop:#c4282c; --stop-soft:#f9e1df; --stop-glow:rgba(196,40,44,.35);
   --caution:#a35f00; --caution-soft:#fbefd2; --seg:#dfe3dc; --scrim:rgba(14,18,20,.55);
-  /* cluster identity hues + flow colours */
-  --hue-1:#2563c9; --hue-2:#0e9384; --hue-3:#c2410c; --hue-4:#9333b8; --hue-5:#b8860b; --hue-6:#d02f6b;
+  /* cluster identity hues — never red/orange/amber: those mean status (error/warning) */
+  --hue-1:#2563c9; --hue-2:#0e9384; --hue-3:#5753d6; --hue-4:#9333b8; --hue-5:#5f7a14; --hue-6:#0884a8;
   --out:#0e9384; --quorum:#7c3aed; --classic:#2563c9;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg:#0c0f10; --grid:#1a1f21; --panel:#13171a; --panel-2:#181d20; --ink:#e8ebe6; --ink-2:#a9b2b4; --ink-3:#6f797c; --rule:#252b2e;
   --signal:#ff8a3c; --signal-soft:#3a2214; --go:#3ddc84; --go-glow:rgba(61,220,132,.45); --stop:#ff5d5d; --stop-soft:#3a1717; --stop-glow:rgba(255,93,93,.5);
-  --caution:#f3b23f; --caution-soft:#33270e; --seg:#252c2f; --scrim:rgba(0,0,0,.65); --hue-1:#6ea4ff; --hue-2:#2fd3bd; --hue-3:#ff8a52; --hue-4:#cf8bff; --hue-5:#f2c14e; --hue-6:#ff6fa3; --out:#2fd3bd; --quorum:#b896ff; --classic:#6ea4ff; color-scheme:dark; } }
+  --caution:#f3b23f; --caution-soft:#33270e; --seg:#252c2f; --scrim:rgba(0,0,0,.65); --hue-1:#6ea4ff; --hue-2:#2fd3bd; --hue-3:#9d9bff; --hue-4:#cf8bff; --hue-5:#b3cc52; --hue-6:#45c6e8; --out:#2fd3bd; --quorum:#b896ff; --classic:#6ea4ff; color-scheme:dark; } }
 :root[data-theme="dark"] {
   --bg:#0c0f10; --grid:#1a1f21; --panel:#13171a; --panel-2:#181d20; --ink:#e8ebe6; --ink-2:#a9b2b4; --ink-3:#6f797c; --rule:#252b2e;
   --signal:#ff8a3c; --signal-soft:#3a2214; --go:#3ddc84; --go-glow:rgba(61,220,132,.45); --stop:#ff5d5d; --stop-soft:#3a1717; --stop-glow:rgba(255,93,93,.5);
-  --caution:#f3b23f; --caution-soft:#33270e; --seg:#252c2f; --scrim:rgba(0,0,0,.65); --hue-1:#6ea4ff; --hue-2:#2fd3bd; --hue-3:#ff8a52; --hue-4:#cf8bff; --hue-5:#f2c14e; --hue-6:#ff6fa3; --out:#2fd3bd; --quorum:#b896ff; --classic:#6ea4ff; color-scheme:dark; }
+  --caution:#f3b23f; --caution-soft:#33270e; --seg:#252c2f; --scrim:rgba(0,0,0,.65); --hue-1:#6ea4ff; --hue-2:#2fd3bd; --hue-3:#9d9bff; --hue-4:#cf8bff; --hue-5:#b3cc52; --hue-6:#45c6e8; --out:#2fd3bd; --quorum:#b896ff; --classic:#6ea4ff; color-scheme:dark; }
 
 /* Expose the tokens as Tailwind utilities: bg-panel, text-ink-2, border-rule, text-signal… */
 @theme inline {
@@ -38,7 +38,7 @@
     background-image:
       radial-gradient(var(--grid) 1px, transparent 1.2px),
       radial-gradient(60rem 30rem at 0% -10%, color-mix(in srgb, var(--hue-1) 9%, transparent), transparent 70%),
-      radial-gradient(50rem 28rem at 100% 0%, color-mix(in srgb, var(--hue-3) 8%, transparent), transparent 70%);
+      radial-gradient(50rem 28rem at 100% 0%, color-mix(in srgb, var(--hue-2) 8%, transparent), transparent 70%);
     background-size:18px 18px, auto, auto; background-attachment:scroll, fixed, fixed;
   }
   :focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
