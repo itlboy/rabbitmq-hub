@@ -1,6 +1,6 @@
 {
   "name": "rabbitmq-hub",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "One dashboard for several RabbitMQ clusters, behind Cloudflare Access.",
   "license": "MIT",
   "private": true,

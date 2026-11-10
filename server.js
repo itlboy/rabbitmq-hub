@@ -468,6 +468,7 @@ http.createServer(async (req, res) => {
       if (!b.vhost || !b.queue || b.confirm !== b.queue) return send(res, 400, { error: 'type the exact queue name to confirm' });
       const before = await rmq(c, 'GET', `/queues/${enc(b.vhost)}/${enc(b.queue)}?columns=messages`);
       await rmq(c, 'DELETE', `/queues/${enc(b.vhost)}/${enc(b.queue)}/contents`);
+      for (const k of Object.keys(summaryCache)) summaryCache[k].at = 0;   // next read goes to the broker, not the 5 s cache
       await audit(`🟠 **RabbitMQ Hub — purge** queue \`${b.queue}\` (vhost \`${b.vhost}\`) on **${c.name}** — ~${before?.messages ?? '?'} messages removed\n**By:** ${email}\n**At:** ${new Date().toLocaleString('en-GB', { timeZone: TZ })} (${TZ})`);
       return send(res, 200, { ok: true, purged: before?.messages ?? null });
     }

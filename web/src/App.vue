@@ -110,7 +110,12 @@ async function confirmPurge(typed) {
     const r = await api.purge(selectedId.value, { vhost: q.vhost, queue: q.name, confirm: typed });
     purgeTarget.value = null;
     showToast(t('emptied', { q: q.name, n: fmt(r.purged ?? 0) }));
-    refresh();
+    // RabbitMQ's management stats lag ~5 s behind a purge: update the row right away (purge removes ready
+    // messages only; unacked ones stay with their consumer), then re-read once the stats have caught up.
+    const row = queues.value.find((x) => x.name === q.name && x.vhost === q.vhost);
+    if (row) { const gone = row.ready; row.ready = 0; row.messages = row.unacked; row.hot = false;
+      if (selected.value?.messages) selected.value.messages.messages = Math.max(0, (selected.value.messages.messages || 0) - gone); }
+    setTimeout(refresh, 6000);
   } catch (e) { purgeError.value = e.message; }
   finally { purgeBusy.value = false; }
 }
