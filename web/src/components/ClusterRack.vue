@@ -2,8 +2,9 @@
 // One cluster as an equipment rack: status LED, waiting messages, in/out rates, gauges, node units with a segmented RAM meter.
 import { fmt, rate, bytes } from '../format.js';
 import Sparkline from './Sparkline.vue';
+import { t } from '../i18n.js';
 
-const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 }, color: { type: String, default: 'var(--hue-1)' } });
+const props = defineProps({ cluster: { type: Object, required: true }, selected: Boolean, index: { type: Number, default: 0 }, color: { type: String, default: 'var(--hue-1)' }, rangeLabel: String });
 defineEmits(['pick', 'nodes']);
 
 import { computed } from 'vue';
@@ -17,10 +18,10 @@ const resources = computed(() => {
   const lvl = (v, w, c) => (v >= c ? 'crit' : v >= w ? 'warn' : 'ok');
   const diskRatio = diskNode?.disk_free_limit ? diskNode.disk_free / diskNode.disk_free_limit : 99;
   return [
-    { label: 'nodes', value: `${up.length}/${ns.length}`, level: up.length < ns.length ? 'crit' : 'ok', title: 'running / total' },
-    { label: 'ram', value: Math.round(ram) + '%', level: up.some((n) => n.mem_alarm) ? 'crit' : lvl(ram, 75, 90), title: 'highest node, % of memory watermark' },
-    { label: 'disk', value: diskNode ? bytes(diskNode.disk_free) : '—', level: up.some((n) => n.disk_alarm) ? 'crit' : diskRatio < 2 ? 'crit' : diskRatio < 5 ? 'warn' : 'ok', title: 'lowest free space of any node' },
-    { label: 'cpu', value: load.toFixed(1), level: lvl(load, 0.7, 1), title: 'highest load (run queue ÷ cores); above 1 = CPU saturated' },
+    { label: t('nodes'), value: `${up.length}/${ns.length}`, level: up.length < ns.length ? 'crit' : 'ok', title: t('running_total') },
+    { label: t('ram'), value: Math.round(ram) + '%', level: up.some((n) => n.mem_alarm) ? 'crit' : lvl(ram, 75, 90), title: t('ram_tip') },
+    { label: t('disk'), value: diskNode ? bytes(diskNode.disk_free) : '—', level: up.some((n) => n.disk_alarm) ? 'crit' : diskRatio < 2 ? 'crit' : diskRatio < 5 ? 'warn' : 'ok', title: t('disk_tip') },
+    { label: t('cpu'), value: load.toFixed(1), level: lvl(load, 0.7, 1), title: t('cpu_tip') },
   ];
 });
 function unit(n) {
@@ -44,26 +45,26 @@ function unit(n) {
 
       <div class="flex items-end justify-between gap-3">
         <div class="min-w-0">
-          <span class="label">waiting</span>
+          <span class="label">{{ t('waiting') }}</span>
           <div class="font-mono text-[26px] font-semibold leading-none tracking-[-.04em] tabular-nums">
-            {{ fmt(cluster.messages?.messages) }}<small class="ml-1 text-[11px] font-normal tracking-normal text-ink-3">msg</small>
+            {{ fmt(cluster.messages?.messages) }}<small class="ml-1 text-[11px] font-normal tracking-normal text-ink-3">{{ t('msg') }}</small>
           </div>
         </div>
-        <Sparkline v-if="cluster.history?.messages?.length" :values="cluster.history.messages" :width="90" :height="26" :color="color" class="mb-0.5 min-w-0 flex-1" />
+        <Sparkline v-if="cluster.history?.messages?.length" :values="cluster.history.messages" :width="90" :height="26" :color="color" class="mb-0.5 min-w-0 flex-1" :title="t('last', { r: rangeLabel })" />
         <div class="grid shrink-0 justify-items-end font-mono text-[11px] leading-snug text-ink-2">
-          <span>in <b class="font-semibold" :class="(cluster.rates?.publish || 0) > 0 ? 'text-signal' : 'text-ink'">{{ rate(cluster.rates?.publish) }}</b>/s</span>
-          <span>out <b class="font-semibold" :class="(cluster.rates?.deliver || 0) > 0 ? 'text-out' : 'text-ink'">{{ rate(cluster.rates?.deliver) }}</b>/s</span>
+          <span>{{ t('in') }} <b class="font-semibold" :class="(cluster.rates?.publish || 0) > 0 ? 'text-signal' : 'text-ink'">{{ rate(cluster.rates?.publish) }}</b>/s</span>
+          <span>{{ t('out') }} <b class="font-semibold" :class="(cluster.rates?.deliver || 0) > 0 ? 'text-out' : 'text-ink'">{{ rate(cluster.rates?.deliver) }}</b>/s</span>
         </div>
       </div>
 
       <dl class="m-0 grid grid-cols-3 divide-x divide-rule rounded-lg border border-rule">
-        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">queues</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
-        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">conns</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
-        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">shovels</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">{{ t('queues') }}</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.queues) }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">{{ t('conns') }}</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ fmt(cluster.totals?.connections) }}</dd></div>
+        <div class="min-w-0 px-2.5 py-1.5"><dt class="label">{{ t('shovels') }}</dt><dd class="m-0 font-mono text-[14px] font-semibold tabular-nums">{{ cluster.shovels ? `${cluster.shovels.running}/${cluster.shovels.total}` : '—' }}</dd></div>
       </dl>
 
       <!-- One summary row for the whole cluster (worst node wins); click for every node -->
-      <button v-if="cluster.nodes?.length" type="button" @click.stop="$emit('nodes')" title="Show every node"
+      <button v-if="cluster.nodes?.length" type="button" @click.stop="$emit('nodes')" :title="t('show_nodes')"
         class="grid grid-cols-4 divide-x divide-rule overflow-hidden rounded-lg border border-rule text-left transition-colors hover:border-ink-3">
         <span v-for="r in resources" :key="r.label" class="min-w-0 px-2.5 py-1.5" :class="r.level === 'crit' ? 'bg-stop-soft' : r.level === 'warn' ? 'bg-caution-soft' : 'bg-go-soft'">
           <span class="label block">{{ r.label }}</span>

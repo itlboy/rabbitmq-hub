@@ -2,6 +2,7 @@
 // Compact one-row strip: edge chips → animated wire → hub chip. Wire dashes speed up with the edges' publish rate.
 import { computed } from 'vue';
 import { fmt, rate } from '../format.js';
+import { t } from '../i18n.js';
 
 const props = defineProps({ clusters: { type: Array, required: true }, colors: { type: Object, default: () => ({}) } });
 const emit = defineEmits(['pick']);
@@ -18,7 +19,7 @@ const wire = computed(() => {
 
 <template>
   <section v-if="hub" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-rule bg-panel px-3 py-2.5" aria-label="Message flow">
-    <span class="label shrink-0 max-md:w-full">Flow</span>
+    <span class="label shrink-0 max-md:w-full">{{ t('flow') }}</span>
     <div class="flex min-w-0 flex-wrap gap-2">
       <button v-for="c in sources" :key="c.id" type="button" @click="emit('pick', c.id)"
         class="flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors hover:border-ink-3"
@@ -27,7 +28,7 @@ const wire = computed(() => {
         <span class="led" :class="!c.ok && 'off'"></span>
         <span class="truncate text-[13px] font-semibold">{{ c.name }}</span>
         <span class="whitespace-nowrap font-mono text-[11px] text-ink-2">
-          {{ rate(c.rates?.publish) }}/s<template v-if="c.shovels"> · {{ c.shovels.running }}/{{ c.shovels.total }} sh</template>
+          {{ rate(c.rates?.publish) }}/s<template v-if="c.shovels"> · {{ c.shovels.running }}/{{ c.shovels.total }} {{ t('shovels_short') }}</template>
         </span>
       </button>
     </div>
@@ -41,9 +42,9 @@ const wire = computed(() => {
       <span class="led" :class="!hub.ok && 'off'"></span>
       <span class="text-[13px] font-semibold">{{ hub.name }}</span>
       <span class="font-mono text-[15px] font-semibold tabular-nums">{{ fmt(hub.messages?.messages) }}</span>
-      <span class="font-mono text-[11px] text-ink-3">waiting · <b class="font-semibold text-out">{{ rate(hub.rates?.deliver) }}</b>/s out</span>
+      <span class="font-mono text-[11px] text-ink-3">{{ t('waiting') }} · <b class="font-semibold text-out">{{ rate(hub.rates?.deliver) }}</b>/s {{ t('out') }}</span>
     </button>
-    <span class="label ml-auto shrink-0 max-lg:hidden">{{ rate(inbound) }} msg/s in</span>
+    <span class="label ml-auto shrink-0 max-lg:hidden">{{ t('msgs_in', { r: rate(inbound) }) }}</span>
   </section>
 </template>
 

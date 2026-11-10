@@ -1,5 +1,6 @@
 <script setup>
 import Spinner from './Spinner.vue';
+import { t } from '../i18n.js';
 defineProps({ shovels: { type: Array, default: () => [] }, error: String, loading: Boolean });
 defineEmits(['open']);
 </script>
@@ -9,14 +10,14 @@ defineEmits(['open']);
     <table class="w-full border-collapse">
       <thead>
         <tr>
-          <th v-for="h in ['Shovel', 'State', 'Node', 'From queue', 'To', 'Last error']" :key="h" scope="col"
-            class="border-b border-rule bg-panel-2 px-3.5 py-2.5 text-left font-mono text-[10px] font-medium whitespace-nowrap uppercase tracking-[.08em] text-ink-3">{{ h }}</th>
+          <th v-for="h in ['col_shovel', 'col_state', 'col_node', 'col_from', 'col_to', 'col_error']" :key="h" scope="col"
+            class="border-b border-rule bg-panel-2 px-3.5 py-2.5 text-left font-mono text-[10px] font-medium whitespace-nowrap uppercase tracking-[.08em] text-ink-3">{{ t(h) }}</th>
         </tr>
       </thead>
       <tbody class="font-mono text-xs">
         <tr v-if="error"><td colspan="6" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
-        <tr v-else-if="loading && !shovels.length"><td colspan="6" class="px-4 py-10 text-center"><Spinner label="Loading shovels…" /></td></tr>
-        <tr v-else-if="!shovels.length"><td colspan="6" class="px-4 py-10 text-center font-sans text-ink-3">No shovels on this cluster.</td></tr>
+        <tr v-else-if="loading && !shovels.length"><td colspan="6" class="px-4 py-10 text-center"><Spinner :label="t('loading_shovels')" /></td></tr>
+        <tr v-else-if="!shovels.length"><td colspan="6" class="px-4 py-10 text-center font-sans text-ink-3">{{ t('no_shovels') }}</td></tr>
         <tr v-for="s in shovels" :key="s.vhost + s.name" class="border-b border-rule last:border-0"
           :class="s.state === 'running' ? 'hover:bg-panel-2' : 'bg-stop-soft'">
           <td class="px-3.5 py-2.5 font-medium whitespace-nowrap text-ink">{{ s.name }}</td>

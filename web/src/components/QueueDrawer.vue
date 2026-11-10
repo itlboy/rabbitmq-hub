@@ -6,8 +6,9 @@ import { api } from '../api.js';
 import { fmt, rate } from '../format.js';
 import Sparkline from './Sparkline.vue';
 import Spinner from './Spinner.vue';
+import { t } from '../i18n.js';
 
-const props = defineProps({ queue: Object, cluster: Object, me: Object });
+const props = defineProps({ queue: Object, cluster: Object, me: Object, rangeLabel: String });
 const emit = defineEmits(['close', 'pick']);
 
 const across = ref([]);
@@ -67,25 +68,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
           <span class="label">{{ cluster?.name }} · {{ queue.type }} · vhost {{ queue.vhost }}</span>
           <h2 class="m-0 mt-0.5 font-mono text-[17px] font-semibold break-all">{{ queue.name }}</h2>
         </div>
-        <button type="button" class="btn" @click="emit('close')" aria-label="Close panel">Close</button>
+        <button type="button" class="btn" @click="emit('close')" :aria-label="t('close')">{{ t('close') }}</button>
       </header>
 
       <div class="flex-1 space-y-6 overflow-y-auto px-5 py-5">
         <!-- numbers + trend -->
         <section class="grid grid-cols-[auto_1fr] items-end gap-4">
           <div>
-            <span class="label">depth now</span>
+            <span class="label">{{ t('depth_now') }}</span>
             <div class="font-mono text-[28px] leading-none font-semibold tabular-nums">{{ fmt(queue.messages) }}</div>
-            <div class="mt-1 font-mono text-[11px] text-ink-2">in {{ rate(queue.publish) }}/s · out {{ rate(queue.deliver) }}/s · {{ fmt(queue.consumers) }} consumers</div>
+            <div class="mt-1 font-mono text-[11px] text-ink-2">{{ t('in') }} {{ rate(queue.publish) }}/s · {{ t('out') }} {{ rate(queue.deliver) }}/s · {{ t('consumers_n', { n: fmt(queue.consumers) }) }}</div>
           </div>
-          <div class="justify-self-end"><span class="label">last 10 min</span><Sparkline :values="queue.history" :width="220" :height="40" /></div>
+          <div class="justify-self-end"><span class="label">{{ t('last', { r: rangeLabel || t('r1h') }) }}</span><Sparkline :values="queue.history" :width="220" :height="40" /></div>
         </section>
 
         <!-- across clusters -->
         <section class="space-y-2">
-          <h3 class="label m-0">This queue on every cluster</h3>
+          <h3 class="label m-0">{{ t('on_every_cluster') }}</h3>
           <p v-if="acrossError" class="m-0 font-mono text-xs text-stop">{{ acrossError }}</p>
-          <div v-else-if="acrossLoading" class="py-2"><Spinner label="Checking every cluster…" /></div>
+          <div v-else-if="acrossLoading" class="py-2"><Spinner :label="t('checking_clusters')" /></div>
           <ol v-else class="m-0 grid list-none gap-1.5 p-0">
             <li v-for="c in path" :key="c.id">
               <button type="button" @click="emit('pick', c.id, queue.name)" :disabled="!c.found"
@@ -95,11 +96,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
                   <span v-if="c.forwards_to" class="font-mono text-[11px] font-normal text-ink-3">→ {{ c.forwards_to }}</span></span>
                 <span class="font-mono text-[11px] whitespace-nowrap text-ink-2">
                   <template v-if="c.error"><span class="text-stop">{{ c.error }}</span></template>
-                  <template v-else-if="!c.found">not declared here</template>
-                  <template v-else>{{ fmt(c.messages) }} msg · {{ fmt(c.consumers) }} cons</template>
+                  <template v-else-if="!c.found">{{ t('not_declared') }}</template>
+                  <template v-else>{{ fmt(c.messages) }} {{ t('msg') }} · {{ fmt(c.consumers) }} cons</template>
                 </span>
                 <span class="font-mono text-[10px] whitespace-nowrap uppercase tracking-[.06em]"
-                  :class="c.shovel === 'running' ? 'text-go' : c.shovel ? 'text-stop' : 'text-ink-3'">{{ c.shovel ? 'shovel ' + c.shovel : c.forwards_to && c.found ? 'no shovel' : '' }}</span>
+                  :class="c.shovel === 'running' ? 'text-go' : c.shovel ? 'text-stop' : 'text-ink-3'">{{ c.shovel ? t('shovel_state', { s: c.shovel }) : c.forwards_to && c.found ? t('no_shovel') : '' }}</span>
               </button>
             </li>
           </ol>
@@ -107,47 +108,45 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
 
         <!-- peek -->
         <section class="space-y-3">
-          <h3 class="label m-0">Read messages</h3>
-          <p v-if="cluster?.allow_peek === false" class="m-0 rounded-md bg-panel-2 px-3 py-2 text-[13px] text-ink-2">Reading messages is turned off for this cluster.</p>
-          <p v-else-if="!me?.can_peek" class="m-0 rounded-md bg-panel-2 px-3 py-2 text-[13px] text-ink-2">Reading message bodies needs admin or peeker access.</p>
+          <h3 class="label m-0">{{ t('read_messages') }}</h3>
+          <p v-if="cluster?.allow_peek === false" class="m-0 rounded-md bg-panel-2 px-3 py-2 text-[13px] text-ink-2">{{ t('peek_off') }}</p>
+          <p v-else-if="!me?.can_peek" class="m-0 rounded-md bg-panel-2 px-3 py-2 text-[13px] text-ink-2">{{ t('peek_role') }}</p>
           <template v-else>
-            <p class="m-0 rounded-md border-l-[3px] border-caution bg-caution-soft px-3 py-2 text-[13px] leading-relaxed text-ink">
-              Messages are taken from the head of the queue and put straight back. They get the <b>redelivered</b> flag and may change order.
-              <template v-if="isQuorum"> On this <b>quorum</b> queue every read also counts as a delivery attempt — repeated reads can push a message past its delivery limit.</template>
-              Every read is logged.
+            <p class="m-0 rounded-md bg-caution-soft px-3 py-2 text-[13px] leading-relaxed text-ink">
+              {{ t('peek_warn') }}<template v-if="isQuorum">{{ t('peek_warn_q') }}</template>{{ t('peek_logged') }}
             </p>
             <form class="flex flex-wrap items-center gap-2" @submit.prevent="doPeek">
-              <label for="peek-count" class="text-[13px] text-ink-2">Show first</label>
+              <label for="peek-count" class="text-[13px] text-ink-2">{{ t('show_first') }}</label>
               <select id="peek-count" v-model="peekCount" class="rounded-md border border-rule bg-panel-2 px-2 py-1.5 font-mono text-xs text-ink">
                 <option v-for="n in [1, 3, 5, 10].filter((n) => n <= (me.peek_max || 10))" :key="n" :value="n">{{ n }}</option>
               </select>
-              <span class="text-[13px] text-ink-2">messages</span>
-              <button type="submit" class="btn ml-auto border-ink text-ink" :disabled="peekBusy || !queue.messages"><Spinner v-if="peekBusy" :size="12" /> {{ peekBusy ? 'Reading…' : 'Read messages' }}</button>
+              <span class="text-[13px] text-ink-2">{{ t('messages') }}</span>
+              <button type="submit" class="btn ml-auto border-ink text-ink" :disabled="peekBusy || !queue.messages"><Spinner v-if="peekBusy" :size="12" /> {{ peekBusy ? t('reading') : t('read_messages') }}</button>
             </form>
-            <p v-if="!queue.messages" class="m-0 text-[13px] text-ink-3">The queue is empty.</p>
+            <p v-if="!queue.messages" class="m-0 text-[13px] text-ink-3">{{ t('queue_empty') }}</p>
             <p v-if="peekError" class="m-0 font-mono text-xs text-stop">{{ peekError }}</p>
-            <p v-if="peeked && !peeked.length" class="m-0 text-[13px] text-ink-3">No messages came back (the queue drained in the meantime).</p>
+            <p v-if="peeked && !peeked.length" class="m-0 text-[13px] text-ink-3">{{ t('none_back') }}</p>
             <ul v-if="peeked?.length" class="m-0 grid list-none gap-2 p-0">
               <li v-for="(m, i) in peeked" :key="i" class="overflow-hidden rounded-lg border border-rule">
                 <button type="button" class="flex w-full items-center gap-3 bg-panel-2 px-3 py-2 text-left" @click="toggle(i)" :aria-expanded="open.has(i)">
                   <span class="font-mono text-[11px] text-ink-3">#{{ i + 1 }}</span>
-                  <span class="min-w-0 flex-1 truncate font-mono text-xs font-medium">{{ jobName(m) || m.routing_key || '(no type)' }}</span>
+                  <span class="min-w-0 flex-1 truncate font-mono text-xs font-medium">{{ jobName(m) || m.routing_key || t('no_type') }}</span>
                   <span v-if="m.redelivered" class="font-mono text-[10px] uppercase text-caution">redelivered</span>
                   <span class="font-mono text-[11px] text-ink-3">{{ fmt(m.bytes) }} B</span>
                   <span class="text-ink-3">{{ open.has(i) ? '▾' : '▸' }}</span>
                 </button>
                 <div v-if="open.has(i)" class="space-y-2 px-3 py-3">
                   <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-ink-2">
-                    <span>exchange: {{ m.exchange || '(default)' }}</span><span>routing key: {{ m.routing_key }}</span>
-                    <span v-if="m.properties.content_type">type: {{ m.properties.content_type }}</span>
-                    <span v-if="m.properties.delivery_mode">mode: {{ m.properties.delivery_mode === 2 ? 'persistent' : 'transient' }}</span>
+                    <span>{{ t('exchange') }}: {{ m.exchange || '(default)' }}</span><span>{{ t('routing_key') }}: {{ m.routing_key }}</span>
+                    <span v-if="m.properties.content_type">{{ t('type') }}: {{ m.properties.content_type }}</span>
+                    <span v-if="m.properties.delivery_mode">{{ t('mode') }}: {{ m.properties.delivery_mode === 2 ? t('persistent') : t('transient') }}</span>
                   </div>
                   <pre v-if="m.properties.headers && Object.keys(m.properties.headers).length" class="m-0 overflow-x-auto rounded bg-panel-2 p-2 font-mono text-[11px] text-ink-2">{{ JSON.stringify(m.properties.headers, null, 2) }}</pre>
                   <div class="relative">
-                    <button type="button" class="btn absolute top-1.5 right-1.5 bg-panel" @click="copy(pretty(m))">Copy</button>
+                    <button type="button" class="btn absolute top-1.5 right-1.5 bg-panel" @click="copy(pretty(m))">{{ t('copy') }}</button>
                     <pre class="m-0 max-h-96 overflow-auto rounded bg-bg p-3 pr-16 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap break-all text-ink">{{ pretty(m) }}</pre>
                   </div>
-                  <p v-if="m.bytes > 65536" class="m-0 font-mono text-[11px] text-caution">Body truncated to 64 KB (full size {{ fmt(m.bytes) }} B).</p>
+                  <p v-if="m.bytes > 65536" class="m-0 font-mono text-[11px] text-caution">{{ t('truncated', { n: fmt(m.bytes) }) }}</p>
                 </div>
               </li>
             </ul>

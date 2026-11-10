@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted } from 'vue';
 // Every node of one cluster: memory, disk, CPU load, sockets, uptime — with one plain-language legend at the bottom.
 import { computed } from 'vue';
 import { bytes } from '../format.js';
+import { t } from '../i18n.js';
 
 const props = defineProps({ cluster: Object, color: String });
 const emit = defineEmits(['close']);
@@ -23,10 +24,10 @@ const rows = computed(() => (props.cluster?.nodes || []).map((n) => {
 }));
 const summary = computed(() => {
   const r = rows.value; const down = r.filter((n) => !n.running).length;
-  if (down) return { level: 'crit', text: `${down} of ${r.length} node(s) stopped. The cluster keeps serving if the rest still form a majority, but redundancy is reduced.` };
-  if (r.some((n) => n.alerts.length)) return { level: 'crit', text: 'A node has an alarm: publishers are blocked until it clears.' };
-  if (r.some((n) => [n.ramLevel, n.diskLevel, n.cpuLevel].includes('warn'))) return { level: 'warn', text: 'All nodes running; one resource is getting close to its limit.' };
-  return { level: 'ok', text: `All ${r.length} node(s) running with plenty of headroom.` };
+  if (down) return { level: 'crit', text: t('nodes_down', { d: down, n: r.length }) };
+  if (r.some((n) => n.alerts.length)) return { level: 'crit', text: t('node_alarm') };
+  if (r.some((n) => [n.ramLevel, n.diskLevel, n.cpuLevel].includes('warn'))) return { level: 'warn', text: t('node_warn') };
+  return { level: 'ok', text: t('nodes_ok', { n: r.length }) };
 });
 const tone = { ok: 'text-go', warn: 'text-caution', crit: 'text-stop' };
 const bar = { ok: 'bg-go', warn: 'bg-caution', crit: 'bg-stop' };
@@ -47,10 +48,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
       role="dialog" :aria-label="`Nodes of ${cluster.name}`" aria-modal="true">
       <header class="flex items-start gap-3 border-b border-rule bg-panel-2 px-5 py-4">
         <div class="min-w-0 flex-1">
-          <span class="label">nodes · RabbitMQ {{ cluster.version }}</span>
+          <span class="label">{{ t('nodes_title', { v: cluster.version }) }}</span>
           <h2 class="m-0 mt-0.5 text-[17px] font-bold">{{ cluster.name }}</h2>
         </div>
-        <button type="button" class="btn" @click="emit('close')">Close</button>
+        <button type="button" class="btn" @click="emit('close')">{{ t('close') }}</button>
       </header>
 
       <div class="flex-1 space-y-4 overflow-y-auto px-5 py-5">
@@ -63,33 +64,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
           <div class="flex items-center gap-2">
             <span class="led" :class="(!n.running || n.alerts.length) && 'off'"></span>
             <b class="min-w-0 flex-1 truncate font-mono text-[13px]">{{ n.name }}</b>
-            <span class="font-mono text-[11px] text-ink-3">{{ n.running ? 'up ' + uptime(n.uptime) : 'stopped' }}</span>
+            <span class="font-mono text-[11px] text-ink-3">{{ n.running ? t('up_for', { t: uptime(n.uptime) }) : t('stopped') }}</span>
           </div>
           <p v-if="n.alerts.length" class="m-0 font-mono text-xs text-stop">{{ n.alerts.join(' · ') }}</p>
           <dl v-if="n.running" class="m-0 grid grid-cols-[3.2rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 font-mono text-xs">
             <dt class="label">RAM</dt>
             <dd class="m-0 h-2 overflow-hidden rounded-full bg-seg"><i class="block h-full rounded-full" :class="bar[n.ramLevel]" :style="{ width: Math.max(2, n.ram) + '%' }"></i></dd>
             <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.ramLevel]"><b>{{ n.ram }}%</b> · {{ bytes(n.mem_used) }} / {{ bytes(n.mem_limit) }}</dd>
-            <dt class="label">Disk</dt>
-            <dd class="m-0 text-ink-3">free</dd>
-            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.diskLevel]"><b>{{ bytes(n.disk_free) }}</b> · limit {{ bytes(n.disk_free_limit) }}</dd>
+            <dt class="label">{{ t('disk') }}</dt>
+            <dd class="m-0 text-ink-3">{{ t('free') }}</dd>
+            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.diskLevel]"><b>{{ bytes(n.disk_free) }}</b> · {{ t('limit') }} {{ bytes(n.disk_free_limit) }}</dd>
             <dt class="label">CPU</dt>
-            <dd class="m-0 text-ink-3">{{ n.processors ?? '—' }} cores</dd>
-            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.cpuLevel]">load <b>{{ n.load === null ? '—' : n.load.toFixed(1) }}</b></dd>
-            <dt class="label">Conns</dt>
-            <dd class="m-0 text-ink-3">sockets · files</dd>
+            <dd class="m-0 text-ink-3">{{ t('cores', { n: n.processors ?? '—' }) }}</dd>
+            <dd class="m-0 text-right whitespace-nowrap" :class="tone[n.cpuLevel]">{{ t('load') }} <b>{{ n.load === null ? '—' : n.load.toFixed(1) }}</b></dd>
+            <dt class="label">{{ t('conns') }}</dt>
+            <dd class="m-0 text-ink-3">{{ t('sockets_files') }}</dd>
             <dd class="m-0 text-right whitespace-nowrap text-ink-2">{{ n.sockets_used ?? '—' }} · {{ n.fd_used ?? '—' }}</dd>
           </dl>
         </article>
 
         <section class="space-y-2 border-t border-rule pt-4 text-[13px] leading-relaxed text-ink-2">
-          <h3 class="label m-0">What these mean</h3>
-          <p class="m-0"><span class="font-semibold text-go">Green</span> = well within limits · <span class="font-semibold text-caution">amber</span> = getting close · <span class="font-semibold text-stop">red</span> = at or over the limit, act now.
-            Thresholds: RAM amber from 75%, red from 90% · Disk amber below 5× the limit, red below 2× · CPU load amber from 0.7, red from 1.</p>
-          <p class="m-0"><b class="text-ink">RAM</b> — memory used as a share of the limit (watermark). At 100% RabbitMQ <b>stops accepting new messages</b> until memory drops; publishing apps slow down or time out. A big backlog is the usual cause.</p>
-          <p class="m-0"><b class="text-ink">Disk</b> — free space for message data. Below the limit RabbitMQ <b>blocks publishers</b> to protect its data. Several times the limit free is comfortable.</p>
-          <p class="m-0"><b class="text-ink">CPU load</b> — processes waiting for a CPU core ÷ number of cores (RabbitMQ has no CPU %). Under 1 the CPU keeps up; over 1 work queues for the CPU and messages are handled late. In Kubernetes the core count is the whole machine's.</p>
-          <p class="m-0"><b class="text-ink">Conns</b> — open client connections (apps, workers, shovels) and open files.</p>
+          <h3 class="label m-0">{{ t('what_mean') }}</h3>
+          <p v-for="k in ['legend_colors', 'legend_ram', 'legend_disk', 'legend_cpu', 'legend_conns']" :key="k" class="m-0">{{ t(k) }}</p>
         </section>
       </div>
     </section>

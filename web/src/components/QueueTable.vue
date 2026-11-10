@@ -4,6 +4,7 @@ import { fmt, rate } from '../format.js';
 import Sparkline from './Sparkline.vue';
 import ShovelList from './ShovelList.vue';
 import Spinner from './Spinner.vue';
+import { t } from '../i18n.js';
 
 const props = defineProps({ cluster: Object, queues: { type: Array, default: () => [] }, canPurge: Boolean, error: String,
   tab: { type: String, default: 'queues' }, color: { type: String, default: 'var(--signal)' }, shovels: { type: Array, default: () => [] }, shovelsError: String, shovelsLoading: Boolean, activeQueue: String, loading: Boolean });
@@ -15,8 +16,8 @@ const onlyWithMessages = ref(false);
 const sortKey = ref('messages');
 const sortDesc = ref(true);
 const columns = [
-  { k: 'name', label: 'Queue', left: true }, { k: 'type', label: 'Type', left: true }, { k: 'messages', label: 'Depth' }, { k: 'ready', label: 'Ready' },
-  { k: 'unacked', label: 'Unacked' }, { k: 'consumers', label: 'Consumers' }, { k: 'publish', label: 'In/s' }, { k: 'deliver', label: 'Out/s' },
+  { k: 'name', label: 'col_queue', left: true }, { k: 'type', label: 'col_type', left: true }, { k: 'messages', label: 'col_depth' }, { k: 'ready', label: 'col_ready' },
+  { k: 'unacked', label: 'col_unacked' }, { k: 'consumers', label: 'col_consumers' }, { k: 'publish', label: 'col_in' }, { k: 'deliver', label: 'col_out' },
 ];
 
 const rows = computed(() => {
@@ -37,23 +38,23 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
   <section class="overflow-hidden rounded-xl border border-rule bg-panel" aria-label="Queues">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-rule px-4 py-3.5">
       <div class="flex items-center gap-1 rounded-md border border-rule bg-panel-2 p-0.5" role="tablist">
-        <button v-for="t in [{ id: 'queues', label: 'Queues', n: queues.length }, ...(cluster?.shovels ? [{ id: 'shovels', label: 'Shovels', n: cluster.shovels.total, bad: cluster.shovels.bad.length }] : [])]" :key="t.id"
-          type="button" role="tab" :aria-selected="tab === t.id" @click="emit('tab', t.id)"
+        <button v-for="tb in [{ id: 'queues', label: t('tab_queues'), n: queues.length }, ...(cluster?.shovels ? [{ id: 'shovels', label: t('tab_shovels'), n: cluster.shovels.total, bad: cluster.shovels.bad.length }] : [])]" :key="tb.id"
+          type="button" role="tab" :aria-selected="tab === tb.id" @click="emit('tab', tb.id)"
           class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[13px] font-semibold transition-colors"
-          :class="tab === t.id ? 'bg-panel text-ink shadow-[0_1px_2px_rgba(0,0,0,.08)]' : 'text-ink-3 hover:text-ink'">
-          {{ t.label }} <span class="font-mono text-[11px] font-normal" :class="t.bad ? 'text-stop' : 'text-ink-3'">{{ t.bad ? `${t.bad}!` : t.n }}</span>
+          :class="tab === tb.id ? 'bg-panel text-ink shadow-[0_1px_2px_rgba(0,0,0,.08)]' : 'text-ink-3 hover:text-ink'">
+          {{ tb.label }} <span class="font-mono text-[11px] font-normal" :class="tb.bad ? 'text-stop' : 'text-ink-3'">{{ tb.bad ? `${tb.bad}!` : tb.n }}</span>
         </button>
       </div>
       <span v-if="cluster" class="text-[13px] font-medium text-ink-3">{{ cluster.name }}</span>
-      <span v-if="cluster && !cluster.allow_purge" class="rounded bg-caution-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[.08em] text-caution">read-only</span>
+      <span v-if="cluster && !cluster.allow_purge" class="rounded bg-caution-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[.08em] text-caution">{{ t('read_only') }}</span>
       <div v-if="tab === 'queues'" class="flex w-full flex-wrap items-center gap-3 md:ml-auto md:w-auto">
         <label class="relative w-full md:w-64">
           <svg class="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-          <input v-model="filter" id="queue-filter" type="search" placeholder="filter queues" aria-label="Filter queues"
+          <input v-model="filter" id="queue-filter" type="search" :placeholder="t('filter')" :aria-label="t('filter')"
             class="w-full rounded-md border border-rule bg-panel-2 py-1.5 pr-2.5 pl-8 font-mono text-xs text-ink outline-none focus:border-signal">
         </label>
-        <label class="inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-ink-2 select-none"><input id="hide-minor" v-model="hideMinor" type="checkbox" class="accent-[var(--signal)]"> Hide minor</label>
-        <label class="inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-ink-2 select-none"><input id="only-msgs" v-model="onlyWithMessages" type="checkbox" class="accent-[var(--signal)]"> With messages</label>
+        <label class="inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-ink-2 select-none"><input id="hide-minor" v-model="hideMinor" type="checkbox" class="accent-[var(--signal)]"> {{ t('hide_minor') }}</label>
+        <label class="inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-ink-2 select-none"><input id="only-msgs" v-model="onlyWithMessages" type="checkbox" class="accent-[var(--signal)]"> {{ t('with_messages') }}</label>
         <span class="font-mono text-[11px] text-ink-3">{{ rows.length }}/{{ queues.length }}</span>
       </div>
     </div>
@@ -66,15 +67,15 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
             <th v-for="c in columns" :key="c.k" @click="sortBy(c.k)" scope="col"
               class="cursor-pointer border-b border-rule bg-panel-2 px-3 py-2 font-mono text-[10px] font-medium whitespace-nowrap uppercase tracking-[.08em] select-none"
               :class="[c.left ? 'text-left' : 'text-right', sortKey === c.k ? 'text-ink' : 'text-ink-3']">
-              {{ c.label }}<span v-if="sortKey === c.k" class="ml-1 text-signal">{{ sortDesc ? '▼' : '▲' }}</span>
+              {{ t(c.label) }}<span v-if="sortKey === c.k" class="ml-1 text-signal">{{ sortDesc ? '▼' : '▲' }}</span>
             </th>
             <th class="border-b border-rule bg-panel-2" aria-label="Actions"></th>
           </tr>
         </thead>
         <tbody class="font-mono text-xs tabular-nums">
           <tr v-if="error"><td colspan="9" class="px-4 py-10 text-center text-stop">{{ error }}</td></tr>
-          <tr v-else-if="loading && !queues.length"><td colspan="9" class="px-4 py-10 text-center"><Spinner label="Loading queues…" /></td></tr>
-          <tr v-else-if="!rows.length"><td colspan="9" class="px-4 py-10 text-center font-sans text-ink-3">{{ queues.length ? 'No queues match these filters.' : cluster ? 'This cluster has no queues yet.' : 'Pick a cluster to read its queues.' }}</td></tr>
+          <tr v-else-if="loading && !queues.length"><td colspan="9" class="px-4 py-10 text-center"><Spinner :label="t('loading_queues')" /></td></tr>
+          <tr v-else-if="!rows.length"><td colspan="9" class="px-4 py-10 text-center font-sans text-ink-3">{{ queues.length ? t('no_match') : cluster ? t('no_queues') : t('pick_cluster') }}</td></tr>
           <tr v-for="(q, i) in rows" :key="q.vhost + q.name" class="group cursor-pointer border-b border-rule/60 last:border-0"
             :class="[(q.hot ?? q.messages > 1000) ? 'bg-caution-soft/70' : i % 2 ? 'bg-[color-mix(in_srgb,var(--seg)_45%,var(--panel))] hover:bg-seg/70' : 'hover:bg-seg/70', activeQueue === q.name && '!bg-seg/70']"
             tabindex="0" @click="emit('open', q.name)" @keydown.enter="emit('open', q.name)">
@@ -91,12 +92,12 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
             </td>
             <td class="px-3 py-1.5 text-right" :class="!q.ready && 'text-ink-3/60'">{{ fmt(q.ready) }}</td>
             <td class="px-3 py-1.5 text-right" :class="!q.unacked && 'text-ink-3/60'">{{ fmt(q.unacked) }}</td>
-            <td class="px-3 py-1.5 text-right" :class="!q.consumers ? (stuck(q) ? 'font-semibold text-stop' : 'text-ink-3/60') : ''" :title="stuck(q) ? 'Ready messages untouched for 10 minutes and no consumer — is any worker reading this queue?' : !q.consumers && (q.deliver || q.unacked) ? 'No consumer attached, but workers are taking messages (polling with basic.get)' : ''">{{ fmt(q.consumers) }}<span v-if="stuck(q)" class="ml-1">!</span></td>
+            <td class="px-3 py-1.5 text-right" :class="!q.consumers ? (stuck(q) ? 'font-semibold text-stop' : 'text-ink-3/60') : ''" :title="stuck(q) ? t('stuck_tip') : !q.consumers && (q.deliver || q.unacked) ? t('polling_tip') : ''">{{ fmt(q.consumers) }}<span v-if="stuck(q)" class="ml-1">!</span></td>
             <td class="px-3 py-1.5 text-right" :class="q.publish ? 'text-signal' : 'text-ink-3/60'">{{ rate(q.publish) }}</td>
             <td class="px-3 py-1.5 text-right" :class="q.deliver ? 'text-out' : 'text-ink-3/60'">{{ rate(q.deliver) }}</td>
             <td class="w-px py-1 pr-3 pl-1">
-              <button v-if="canPurge" type="button" class="btn !py-0.5 hover:enabled:border-stop hover:enabled:bg-stop-soft hover:enabled:text-stop"
-                :disabled="!q.messages" @click.stop="emit('purge', q)">Empty</button>
+              <button v-if="canPurge" type="button" class="btn !py-0.5 whitespace-nowrap hover:enabled:border-stop hover:enabled:bg-stop-soft hover:enabled:text-stop"
+                :disabled="!q.messages" @click.stop="emit('purge', q)">{{ t('empty_btn') }}</button>
             </td>
           </tr>
         </tbody>

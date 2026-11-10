@@ -12,8 +12,8 @@ async function request(path, opts = {}) {
 
 export const api = {
   me: () => request('/api/me'),
-  clusters: () => request('/api/clusters'),
-  queues: (id) => request(`/api/clusters/${encodeURIComponent(id)}/queues`),
+  clusters: (range = '1h') => request(`/api/clusters?range=${range}`),
+  queues: (id, range = '1h') => request(`/api/clusters/${encodeURIComponent(id)}/queues?range=${range}`),
   shovels: (id) => request(`/api/clusters/${encodeURIComponent(id)}/shovels`),
   across: (name) => request(`/api/queue-across?name=${encodeURIComponent(name)}`),
   peek: (id, body) => request(`/api/clusters/${encodeURIComponent(id)}/peek`, {

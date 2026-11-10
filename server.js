@@ -78,8 +78,12 @@ function roleOf(email) {
 // Reading message bodies may expose customer data: admins + users.peekers only.
 const canPeek = (role) => role === 'admin' || role === 'peeker';
 const PEEK_MAX = () => Math.min(50, Math.max(1, Number(config.peek_max || 10)));
-// Short history for sparklines: last 10 minutes, one sample every 30 s (from the management API, no storage).
-const HIST = 'lengths_age=600&lengths_incr=30&msg_rates_age=600&msg_rates_incr=30';
+// History for sparklines, from the management API's own samples (no storage). Default retention: cluster-wide ~8 h,
+// per-queue 1 h — so queue history is capped at 1 h whatever range is asked.
+const RANGES = { '10m': [600, 30], '1h': [3600, 60], '8h': [28800, 600] };
+const rangeOf = (r) => (RANGES[r] ? r : '1h');
+const HIST = (r, cap) => { let [age, incr] = RANGES[rangeOf(r)]; if (cap && age > cap) [age, incr] = RANGES['1h'];
+  return `lengths_age=${age}&lengths_incr=${incr}&msg_rates_age=${age}&msg_rates_incr=${incr}`; };
 const series = (d) => (d?.samples || []).slice().reverse().map((x) => x.sample);
 const rateSeries = (d) => {
   const s = (d?.samples || []).slice().reverse();
@@ -103,10 +107,10 @@ async function rmq(cluster, method, p, timeoutMs = 8000) {
 }
 const enc = encodeURIComponent;
 
-async function clusterSummary(c) {
+async function clusterSummary(c, range) {
   const out = { id: c.id, name: c.name, role: c.role || '', allow_purge: !!c.allow_purge, allow_peek: c.allow_peek !== false, forwards_to: c.forwards_to || null, ok: false, problems: [] };
   try {
-    const [ov, nodes] = await Promise.all([rmq(c, 'GET', `/overview?${HIST}`), rmq(c, 'GET', '/nodes')]);
+    const [ov, nodes] = await Promise.all([rmq(c, 'GET', `/overview?${HIST(range)}`), rmq(c, 'GET', '/nodes')]);
     out.version = ov.rabbitmq_version;
     out.totals = ov.object_totals;
     out.messages = ov.queue_totals || {};
@@ -149,9 +153,9 @@ async function clusterSummary(c) {
   return out;
 }
 
-async function clusterQueues(c) {
+async function clusterQueues(c, range) {
   const cols = 'name,vhost,type,state,messages,messages_ready,messages_unacknowledged,consumers,messages_details,message_stats';
-  const qs = await rmq(c, 'GET', `/queues?columns=${cols}&${HIST}`, 15000);
+  const qs = await rmq(c, 'GET', `/queues?columns=${cols}&${HIST(range, 3600)}`, 15000);
   const hidden = c.hide_queue_pattern ? new RegExp(c.hide_queue_pattern) : null;
   return qs.map((q) => ({
     name: q.name, vhost: q.vhost, type: q.type, state: q.state, messages: q.messages || 0,
@@ -213,15 +217,16 @@ async function peek(c, vhost, queue, count) {
 
 // Short cache so dashboards, health checks and AI agents polling together don't hammer the brokers.
 const CACHE_MS = 5000;
-let summaryCache = { at: 0, data: null, pending: null };
-async function allSummaries() {
-  if (summaryCache.data && Date.now() - summaryCache.at < CACHE_MS) return summaryCache.data;
-  if (!summaryCache.pending) {
-    summaryCache.pending = Promise.all((config.clusters || []).map(clusterSummary))
-      .then((d) => { summaryCache = { at: Date.now(), data: d, pending: null }; return d; })
-      .catch((e) => { summaryCache.pending = null; throw e; });
+const summaryCache = {};   // per history range
+async function allSummaries(range) {
+  const r = rangeOf(range); const sc = summaryCache[r] ||= { at: 0, data: null, pending: null };
+  if (sc.data && Date.now() - sc.at < CACHE_MS) return sc.data;
+  if (!sc.pending) {
+    sc.pending = Promise.all((config.clusters || []).map((c) => clusterSummary(c, r)))
+      .then((d) => { Object.assign(sc, { at: Date.now(), data: d, pending: null }); return d; })
+      .catch((e) => { sc.pending = null; throw e; });
   }
-  return summaryCache.pending;
+  return sc.pending;
 }
 
 // Whole-system verdict: down = a hub (cluster others forward to) or every cluster is unreachable/broken; degraded = any problem.
@@ -411,7 +416,7 @@ http.createServer(async (req, res) => {
   if (!role) return send(res, 403, { error: `${email} has no access — ask an admin to add you to config.json` });
 
   try {
-    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, can_peek: canPeek(role), peek_max: PEEK_MAX(), title: config.title || 'RabbitMQ Hub' });
+    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, can_peek: canPeek(role), peek_max: PEEK_MAX(), title: config.title || 'RabbitMQ Hub', locale: config.locale || 'en' });
     if (req.method === 'GET' && (url.pathname === '/api' || url.pathname === '/api/')) return send(res, 200, API_INDEX);
     if (req.method === 'GET' && url.pathname === '/api/health') {
       const h = await systemHealth();
@@ -422,11 +427,11 @@ http.createServer(async (req, res) => {
       return handleMcp(req, res, email, role);
     }
     if (req.method === 'GET' && url.pathname === '/api/clusters')
-      return send(res, 200, await allSummaries());
+      return send(res, 200, await allSummaries(url.searchParams.get('range')));
     let m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/queues$/);
     if (req.method === 'GET' && m) {
       const c = clusterById(m[1]); if (!c) return send(res, 404, { error: 'unknown cluster' });
-      return send(res, 200, await clusterQueues(c));
+      return send(res, 200, await clusterQueues(c, url.searchParams.get('range')));
     }
     m = url.pathname.match(/^\/api\/clusters\/([\w-]+)\/shovels$/);
     if (req.method === 'GET' && m) {

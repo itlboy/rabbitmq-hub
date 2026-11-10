@@ -29,8 +29,8 @@ const clone = (x) => JSON.parse(JSON.stringify(x));
 export async function handle(path, opts = {}) {
   const extra = await handleExtra(path, opts); if (extra) return extra;
   await new Promise((r) => setTimeout(r, 120));
-  if (path === '/api/me') return { email: 'alice@example.com', role: 'admin', can_peek: true, peek_max: 10, title: 'RabbitMQ Hub' };
-  if (path === '/api/clusters') return clone(clusters);
+  if (path === '/api/me') return { email: 'alice@example.com', role: 'admin', can_peek: true, peek_max: 10, title: 'RabbitMQ Hub', locale: 'en' };
+  if (path.startsWith('/api/clusters?') || path === '/api/clusters') return clone(clusters);
   let m = path.match(/\/api\/clusters\/([^/]+)\/queues/);
   if (m) return clone(Q[decodeURIComponent(m[1])] || []);
   m = path.match(/\/api\/clusters\/([^/]+)\/purge/);

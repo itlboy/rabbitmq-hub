@@ -16,7 +16,8 @@ A tiny, dependency-free dashboard to watch several RabbitMQ clusters from one pa
 - **Empty a queue** — admins only, the queue name must be typed again, and purge can be disabled per cluster. Every purge is logged and can be posted to a webhook.
 - **No database** — users, roles and clusters live in one `config.json`, hot-reloaded when it changes.
 - **No runtime dependencies** — `server.js` uses only the Node.js 26 standard library. The UI is Vue 3 + Tailwind CSS 4, built once with Vite into `dist/`.
-- **Light / dark / system theme**, remembered per browser.
+- **Light / dark / system theme** and **English / Vietnamese** UI, remembered per browser (`locale` in config sets the default).
+- **History range** 10 min / 1 h / 8 h for sparklines (management API retention: cluster ~8 h, queues 1 h).
 
 ## How auth works
 
@@ -37,6 +38,7 @@ Copy `config.example.json` to `config.json`:
 | Key | Meaning |
 |---|---|
 | `title` | Page title (optional) |
+| `locale` | Default UI language: `en` (default) or `vi` |
 | `public_origin` | Public URL of the hub; POSTs from another origin are rejected |
 | `access.team_domain` | `<team>.cloudflareaccess.com` |
 | `access.aud` | AUD tag of the Access application |
