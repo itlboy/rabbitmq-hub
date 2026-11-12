@@ -150,12 +150,12 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
 
   <header class="sticky top-[env(safe-area-inset-top,0px)] z-[6] border-b border-rule bg-panel/90 backdrop-blur">
     <div class="gutter mx-auto flex max-w-[1480px] flex-wrap items-center gap-x-4 gap-y-2 py-3">
-      <div class="flex items-center gap-2.5">
+      <a href="/" class="flex items-center gap-2.5 rounded-md text-ink no-underline transition-opacity hover:opacity-80" :title="t('home')">
         <span class="grid size-7 grid-cols-[repeat(3,4px)] place-content-center gap-[3px] rounded-[7px] bg-ink" aria-hidden="true">
           <i v-for="n in 9" :key="n" class="size-1 rounded-[1px]" :style="{ background: [1, 3, 7, 9].includes(n) ? 'var(--panel)' : `var(--hue-${[0, 0, 1, 0, 2, 3, 4, 0, 5, 0][n]})` }"></i>
         </span>
         <b class="text-[15px] font-bold tracking-tight">{{ me?.title || 'RabbitMQ Hub' }}</b>
-      </div>
+      </a>
       <button v-if="clusters.length" type="button" @click="jumpToTrouble" :disabled="!unhealthy.length"
         :title="unhealthy.length ? t('jump_to', { names: unhealthy.map((c) => c.name).join(', ') }) : ''"
         class="inline-flex items-center gap-2 rounded-md border px-2.5 py-1 font-mono text-xs font-medium disabled:cursor-default"
