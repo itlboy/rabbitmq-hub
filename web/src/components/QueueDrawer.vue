@@ -148,14 +148,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
         <form v-if="canPeek" class="flex min-w-0 items-center gap-3" @submit.prevent="doPeek">
           <div class="inline-flex overflow-hidden rounded-lg shadow-[0_6px_18px_-10px_var(--signal)]">
             <button type="submit" :disabled="peekBusy || !queue.messages"
-              class="inline-flex items-center gap-2 bg-signal px-3.5 py-2 text-[13px] font-semibold text-white transition hover:enabled:brightness-110 disabled:opacity-40">
+              class="inline-flex items-center gap-2 bg-signal px-3.5 py-2 text-[13px] font-semibold text-[#1a1206] transition hover:enabled:brightness-110 disabled:opacity-40">
               <Spinner v-if="peekBusy" :size="13" />
               <svg v-else class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
               {{ peekBusy ? t('reading') : t('read_n', { n: peekCount }) }}
             </button>
             <label for="peek-count" class="sr-only">{{ t('show_first') }}</label>
             <select id="peek-count" v-model="peekCount" :disabled="peekBusy || !queue.messages"
-              class="border-l border-white/25 bg-signal px-2 font-mono text-xs font-semibold text-white outline-none disabled:opacity-40">
+              class="border-l border-black/20 bg-signal px-2 font-mono text-xs font-semibold text-[#1a1206] outline-none disabled:opacity-40">
               <option v-for="n in [1, 3, 5, 10].filter((n) => n <= (me.peek_max || 10))" :key="n" :value="n">{{ n }}</option>
             </select>
           </div>
@@ -163,7 +163,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
         </form>
 
         <button v-if="canPurge" type="button" :disabled="!queue.messages" @click="emit('purge', queue)"
-          class="ml-auto inline-flex items-center gap-2 rounded-lg border border-stop/60 px-3.5 py-2 text-[13px] font-semibold text-stop transition hover:enabled:border-stop hover:enabled:bg-stop hover:enabled:text-white disabled:opacity-35">
+          class="ml-auto inline-flex items-center gap-2 rounded-lg bg-[#c62f2f] px-3.5 py-2 text-[13px] font-semibold text-white shadow-[0_6px_18px_-10px_#c62f2f] transition hover:enabled:bg-[#ad2525] disabled:opacity-35">
           <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
           {{ t('empty_queue') }}<span class="font-mono text-[11px] font-medium opacity-80">{{ fmt(queue.messages) }}</span>
         </button>
