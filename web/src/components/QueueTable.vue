@@ -26,6 +26,13 @@ const rows = computed(() => {
   const k = sortKey.value;
   return r.sort((a, b) => { const x = a[k], y = b[k]; const d = typeof x === 'string' ? x.localeCompare(y) : x - y; return sortDesc.value ? -d : d; });
 });
+// Minor queues (delay/retry) hidden by the filter still count in the cluster's "waiting" total — say so.
+const hiddenMinor = computed(() => {
+  if (!hideMinor.value) return null;
+  const f = filter.value.toLowerCase();
+  const h = props.queues.filter((q) => q.minor && q.messages > 0 && (!f || q.name.toLowerCase().includes(f)));
+  return h.length ? { n: h.length, msgs: h.reduce((a, q) => a + q.messages, 0) } : null;
+});
 const max = computed(() => Math.max(1, ...rows.value.map((q) => q.messages)));
 // Really stuck = READY messages nobody takes: no consumer, nothing delivered right now, and the queue was never empty
 // in the 10-minute history. Unacked messages are already being processed (workers polling with basic.get show 0 consumers).
@@ -101,6 +108,13 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
             <td class="w-px py-1 pr-3 pl-1">
               <button v-if="canPurge" type="button" class="btn !py-0.5 whitespace-nowrap hover:enabled:border-stop hover:enabled:bg-stop-soft hover:enabled:text-stop"
                 :disabled="!q.messages" @click.stop="emit('purge', q)">{{ t('empty_btn') }}</button>
+            </td>
+          </tr>
+          <tr v-if="hiddenMinor" class="bg-panel-2/60">
+            <td colspan="99" class="px-3 py-2.5 text-[13px] text-ink-2">
+              <button type="button" class="underline decoration-dotted underline-offset-4 hover:text-ink" @click="hideMinor = false">
+                {{ t('hidden_minor', { n: hiddenMinor.n, m: fmt(hiddenMinor.msgs) }) }}
+              </button>
             </td>
           </tr>
         </tbody>
