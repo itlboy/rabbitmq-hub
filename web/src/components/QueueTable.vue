@@ -11,7 +11,7 @@ const props = defineProps({ cluster: Object, queues: { type: Array, default: () 
 const emit = defineEmits(['purge', 'open', 'tab']);
 
 const filter = ref('');
-const hideMinor = ref(true);
+const hideMinor = ref(false); // show everything by default so the table adds up to the cluster's waiting total
 const onlyWithMessages = ref(false);
 const sortKey = ref('messages');
 const sortDesc = ref(true);
