@@ -44,7 +44,7 @@
   :focus-visible { outline:2px solid var(--signal); outline-offset:2px; }
   [hidden] { display:none !important; }
   /* Tailwind 4 preflight resets buttons to cursor:default — every clickable control gets the hand. */
-  button:not(:disabled), [role="button"], select, summary, label[for] { cursor:pointer; }
+  button:not(:disabled), [role="button"], select, summary, label[for], input[type="checkbox"], input[type="radio"] { cursor:pointer; }
 }
 
 @layer components {
