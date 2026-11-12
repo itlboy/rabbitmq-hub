@@ -162,6 +162,7 @@ async function clusterQueues(c, range) {
     name: q.name, vhost: q.vhost, type: q.type, state: q.state, messages: q.messages || 0,
     ready: q.messages_ready || 0, unacked: q.messages_unacknowledged || 0, consumers: q.consumers || 0,
     publish: q.message_stats?.publish_details?.rate || 0, deliver: q.message_stats?.deliver_get_details?.rate || 0,
+    ack: q.message_stats?.ack_details?.rate || 0,
     minor: hidden ? hidden.test(q.name) : false,
     hot: (c.warn_threshold?.[q.name] ?? c.warn_messages ?? 1000) < (q.messages || 0),
     history: series(q.messages_details),

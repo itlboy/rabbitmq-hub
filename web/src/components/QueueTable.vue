@@ -36,7 +36,9 @@ const hiddenMinor = computed(() => {
 const max = computed(() => Math.max(1, ...rows.value.map((q) => q.messages)));
 // Really stuck = READY messages nobody takes: no consumer, nothing delivered right now, and the queue was never empty
 // in the 10-minute history. Unacked messages are already being processed (workers polling with basic.get show 0 consumers).
-const stuck = (q) => !q.minor && !q.consumers && q.ready > 0 && !q.deliver
+// Laravel workers poll with basic.get, so they never show as consumers and their get rate drops to 0 between bursts:
+// only call it stuck when nothing is being worked on either (no unacked, no acks).
+const stuck = (q) => !q.minor && !q.consumers && q.ready > 0 && !q.deliver && !q.unacked && !q.ack
   && (q.history?.length >= 4 ? Math.min(...q.history) > 0 : false);
 function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k !== 'name'; sortKey.value = k; }
 </script>
