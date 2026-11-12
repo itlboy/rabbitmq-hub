@@ -16,7 +16,7 @@ const D = {
   en: {
     healthy: '{n}/{n} healthy', attention: '{bad}/{n} need attention →', jump_to: 'Jump to {names}',
     refresh_now: 'Refresh now (auto every {s}s)', connecting: 'connecting', pause: 'Pause', paused: 'Paused',
-    range: 'History', r10m: '10 min', r1h: '1 hour', r8h: '8 hours', last: 'last {r}',
+    range: 'History', r10m: '10 min', r1h: '1 hour', r8h: '8 hours', last: 'last {r}', now: 'now',
     theme_light: 'Light theme', theme_system: 'Match system theme', theme_dark: 'Dark theme',
     connecting_clusters: 'Connecting to clusters…', loading: 'Loading',
     flow: 'Flow', msgs_in: '{r} msg/s in', waiting: 'waiting', out: 'out', in: 'in', shovels_short: 'sh',
@@ -61,7 +61,7 @@ const D = {
   vi: {
     healthy: '{n}/{n} cụm ổn', attention: '{bad}/{n} cụm cần xem →', jump_to: 'Tới {names}',
     refresh_now: 'Làm mới ngay (tự động mỗi {s} giây)', connecting: 'đang kết nối', pause: 'Dừng', paused: 'Đã dừng',
-    range: 'Lịch sử', r10m: '10 phút', r1h: '1 giờ', r8h: '8 giờ', last: '{r} qua',
+    range: 'Lịch sử', r10m: '10 phút', r1h: '1 giờ', r8h: '8 giờ', last: '{r} qua', now: 'bây giờ',
     theme_light: 'Giao diện sáng', theme_system: 'Theo hệ thống', theme_dark: 'Giao diện tối',
     connecting_clusters: 'Đang kết nối tới các cụm…', loading: 'Đang tải',
     flow: 'Luồng', msgs_in: '{r} msg/s vào', waiting: 'đang chờ', out: 'ra', in: 'vào', shovels_short: 'sh',

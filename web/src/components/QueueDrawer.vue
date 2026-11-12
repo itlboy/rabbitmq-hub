@@ -79,7 +79,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onEsc));
             <div class="font-mono text-[28px] leading-none font-semibold tabular-nums">{{ fmt(queue.messages) }}</div>
             <div class="mt-1 font-mono text-[11px] text-ink-2">{{ t('in') }} {{ rate(queue.publish) }}/s · {{ t('out') }} {{ rate(queue.deliver) }}/s · {{ t('consumers_n', { n: fmt(queue.consumers) }) }}</div>
           </div>
-          <div class="justify-self-end"><span class="label">{{ t('last', { r: rangeLabel || t('r1h') }) }}</span><Sparkline :values="queue.history" :width="220" :height="40" /></div>
+          <div class="justify-self-end"><span class="label">{{ t('last', { r: rangeLabel || t('r1h') }) }}</span><Sparkline :values="queue.history" :width="220" :height="56" axis /><div class="mt-1 flex justify-between pl-7 font-mono text-[10px] text-ink-3"><span>−{{ rangeLabel || t('r1h') }}</span><span>{{ t('now') }}</span></div></div>
         </section>
 
         <!-- across clusters -->
