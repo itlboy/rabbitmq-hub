@@ -217,7 +217,7 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
   </main>
 
   <NodeDrawer :cluster="nodesCluster" :color="colors[nodesClusterId]" @close="nodesClusterId = ''" />
-  <QueueDrawer :queue="openQueue" :cluster="selected" :me="me" :range-label="range === '8h' ? t('r1h') : rangeLabel" @close="closeQ" @pick="pick" />
+  <QueueDrawer :queue="openQueue" :cluster="selected" :me="me" :can-purge="canPurge" @purge="openPurge" :range-label="range === '8h' ? t('r1h') : rangeLabel" @close="closeQ" @pick="pick" />
 
   <PurgeDialog :target="purgeTarget" :cluster-name="selected?.name" :busy="purgeBusy" :error="purgeError"
     @cancel="purgeTarget = null" @confirm="confirmPurge" />
