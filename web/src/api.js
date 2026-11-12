@@ -4,7 +4,14 @@ if (import.meta.env.VITE_MOCK) mock = await import('./mock.js');
 
 async function request(path, opts = {}) {
   if (mock) return mock.handle(path, opts);
-  const r = await fetch(path, opts);
+  const r = await fetch(path, { ...opts, redirect: 'manual' });
+  // Cloudflare Access session expired: requests come back 401 / invalid_token, or as an opaque redirect to the
+  // login page. Reload once so Access signs the user in again (guarded so a real outage cannot loop).
+  if (r.type === 'opaqueredirect' || r.status === 401) {
+    const last = Number(sessionStorage.getItem('hub.relogin') || 0);
+    if (Date.now() - last > 60_000) { sessionStorage.setItem('hub.relogin', String(Date.now())); location.reload(); }
+    throw new Error('session expired — reloading');
+  }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
