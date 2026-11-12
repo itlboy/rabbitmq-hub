@@ -4,7 +4,7 @@ const node = (name, used, limit, free, o = {}) => ({ name, running: true, mem_us
 const clusters = [
   { id: 'main', name: 'Main', role: 'central broker · workers read here', version: '4.3.6', ok: true, problems: [], allow_purge: true,
     messages: { messages: 20418 }, rates: { publish: 55.2, deliver: 88.4 }, totals: { queues: 41, connections: 386 }, shovels: null, nodes: [node('broker-1', 612, 900, 18.2, { run_queue: 1 })] },
-  { id: 'edge-us', forwards_to: 'main', name: 'Edge US', role: '3 nodes · shovels to Main', version: '4.3.6', ok: true, problems: [], allow_purge: true,
+  { id: 'edge-us', forwards_to: 'main', ui_url: 'http://192.0.2.10:15672/', name: 'Edge US', role: '3 nodes · shovels to Main', version: '4.3.6', ok: true, problems: [], allow_purge: true,
     messages: { messages: 3 }, rates: { publish: 21.7, deliver: 21.6 }, totals: { queues: 18, connections: 64 }, shovels: { total: 18, running: 18, bad: [] },
     nodes: [node('rabbitmq-0', 214, 2457, 512), node('rabbitmq-1', 198, 2457, 1580), node('rabbitmq-2', 203, 2457, 188)] },
   { id: 'edge-eu', forwards_to: 'main', name: 'Edge EU', role: '3 nodes · shovels to Main', version: '4.3.6', ok: false, allow_purge: true,

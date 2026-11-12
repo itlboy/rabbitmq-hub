@@ -46,6 +46,9 @@ function sortBy(k) { sortDesc.value = sortKey.value === k ? !sortDesc.value : k 
         </button>
       </div>
       <span v-if="cluster" class="text-[13px] font-medium text-ink-3">{{ cluster.name }}</span>
+      <a v-if="cluster?.ui_url" :href="cluster.ui_url" target="_blank" rel="noopener noreferrer" :title="t('open_ui_tip')"
+        class="inline-flex items-center gap-1 rounded-md border border-rule bg-panel-2 px-2 py-0.5 text-[12px] font-semibold text-ink-2 no-underline transition-colors hover:border-ink-3 hover:text-ink">
+        {{ t('open_ui') }}<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></svg></a>
       <span v-if="cluster && !cluster.allow_purge" class="rounded bg-caution-soft px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[.08em] text-caution">{{ t('read_only') }}</span>
       <div v-if="tab === 'queues'" class="flex w-full flex-wrap items-center gap-3 md:ml-auto md:w-auto">
         <label class="relative w-full md:w-64">

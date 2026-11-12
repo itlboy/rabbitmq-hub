@@ -7,6 +7,7 @@
 // Purge: admin only, the queue name must be typed again, and the cluster must have allow_purge=true.
 // Every purge is logged and optionally sent to a webhook (Discord/Slack-compatible JSON `content`).
 import http from 'node:http';
+import https from 'node:https';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -108,7 +109,7 @@ async function rmq(cluster, method, p, timeoutMs = 8000) {
 const enc = encodeURIComponent;
 
 async function clusterSummary(c, range) {
-  const out = { id: c.id, name: c.name, role: c.role || '', allow_purge: !!c.allow_purge, allow_peek: c.allow_peek !== false, forwards_to: c.forwards_to || null, ok: false, problems: [] };
+  const out = { id: c.id, name: c.name, role: c.role || '', allow_purge: !!c.allow_purge, allow_peek: c.allow_peek !== false, forwards_to: c.forwards_to || null, ui_url: c.ui_proxy ? `/m/${c.id}/` : /^https?:\/\//i.test(c.ui_url || '') ? c.ui_url : null, ui_proxy: !!c.ui_proxy, ok: false, problems: [] };
   try {
     const [ov, nodes] = await Promise.all([rmq(c, 'GET', `/overview?${HIST(range)}`), rmq(c, 'GET', '/nodes')]);
     out.version = ov.rabbitmq_version;
@@ -405,6 +406,59 @@ function serveStatic(res, pathname) {
   fs.createReadStream(file).pipe(res);
 }
 
+// ---- Management UI through the hub (/m/<cluster>/…) --------------------------------------------------------------
+// The stock RabbitMQ management UI, proxied so people only need Cloudflare Access — no Tailscale, no RabbitMQ password.
+// The browser gets a placeholder credential (hub-login.js seeds the UI's localStorage); the hub swaps it for the real
+// one on the way out, so the password never reaches the browser. Admins: every method. Others: read-only (GET/HEAD),
+// and never /api/definitions (it contains password hashes). Every change made through it goes to the audit webhook.
+const UI_PLACEHOLDER = Buffer.from('rabbitmq-hub:proxied').toString('base64');
+const HUB_LOGIN_JS = `// rabbitmq-hub: sign the management UI in through the hub (placeholder credential; the hub adds the real one)
+(function () { try {
+  var k = 'rabbitmq.', ls = window.localStorage, exp = ls.getItem(k + 'session_expiry');
+  if (!ls.getItem(k + 'credentials') || (exp && Date.now() >= parseInt(exp, 10))) {
+    ls.setItem(k + 'credentials', '${UI_PLACEHOLDER}'); ls.setItem(k + 'auth-scheme', 'Basic'); ls.removeItem(k + 'session_expiry');
+  }
+} catch (e) {} })();
+`;
+const UI_FWD_HEADERS = ['accept', 'accept-encoding', 'accept-language', 'content-type', 'content-length', 'x-vhost', 'if-none-match', 'if-modified-since'];
+const UI_QUIET = (method, sub) => /^\/api\/login\/?$/.test(sub) && (method === 'POST' || method === 'DELETE');
+function uiBase(c) { return new URL(c.api.replace(/\/api\/?$/, '/')); }
+async function proxyUi(req, res, c, sub, search, email, role) {
+  const write = !['GET', 'HEAD'].includes(req.method);
+  if (write && role !== 'admin') return send(res, 403, { error: 'read-only: only admins can change things through the management UI' });
+  if (write && config.public_origin && req.headers.origin !== config.public_origin) return send(res, 400, { error: 'invalid origin' });
+  let norm; try { norm = decodeURIComponent(sub); } catch { return send(res, 400, { error: 'bad path' }); }
+  if (role !== 'admin' && /^\/+api\/+definitions/i.test(norm.replace(/\/+/g, '/'))) return send(res, 403, { error: 'definitions export is admin only' });
+  if (sub === '/hub-login.js')
+    return send(res, 200, HUB_LOGIN_JS, 'text/javascript; charset=utf-8');
+  const base = uiBase(c);
+  const target = new URL(base.pathname.replace(/\/$/, '') + sub + search, base);
+  const isIndex = sub === '/' || sub === '/index.html';
+  const headers = { authorization: 'Basic ' + Buffer.from(`${RMQ_USER}:${RMQ_PASS}`).toString('base64') };
+  for (const h of UI_FWD_HEADERS) if (req.headers[h] !== undefined) headers[h] = req.headers[h];
+  if (isIndex) headers['accept-encoding'] = 'identity';
+  const mod = target.protocol === 'https:' ? https : http;
+  const up = mod.request(target, { method: req.method, headers, timeout: 30000 }, (ur) => {
+    const h = { ...ur.headers }; delete h['set-cookie']; delete h['www-authenticate'];   // no browser Basic-auth popup
+    if (isIndex && ur.statusCode === 200) {
+      let body = '';
+      ur.setEncoding('utf8'); ur.on('data', (d) => { body += d; });
+      ur.on('end', () => {
+        body = body.replace(/<head>/i, '<head>\n    <script src="hub-login.js"></script>');
+        delete h['content-length']; delete h['content-encoding']; delete h.etag;
+        res.writeHead(200, { ...h, 'cache-control': 'no-store' }); res.end(body);
+      });
+      return;
+    }
+    res.writeHead(ur.statusCode, h); ur.pipe(res);
+    if (write && !UI_QUIET(req.method, sub) && ur.statusCode < 400)
+      audit(`🛠️ **RabbitMQ Hub — management UI** \`${req.method} ${sub}\` on **${c.name}** (HTTP ${ur.statusCode})\n**By:** ${email}\n**At:** ${new Date().toLocaleString('en-GB', { timeZone: TZ })} (${TZ})`);
+  });
+  up.on('timeout', () => up.destroy(new Error('upstream timeout')));
+  up.on('error', (e) => { log(`ui proxy ${c.id} ${req.method} ${sub}: ${e.message}`); if (!res.headersSent) send(res, 502, { error: 'management UI unreachable: ' + e.message }); else res.destroy(); });
+  req.pipe(up);
+}
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/healthz') return send(res, 200, { ok: true });
@@ -416,6 +470,13 @@ http.createServer(async (req, res) => {
   if (!role) return send(res, 403, { error: `${email} has no access — ask an admin to add you to config.json` });
 
   try {
+    let mu = url.pathname.match(/^\/m\/([\w-]+)(\/.*)?$/);
+    if (mu) {
+      const c = clusterById(mu[1]);
+      if (!c || !c.ui_proxy) return send(res, 404, { error: 'management UI is not proxied for this cluster (ui_proxy)' });
+      if (!mu[2]) { res.writeHead(302, { Location: `/m/${c.id}/` }); return res.end(); }
+      return proxyUi(req, res, c, mu[2], url.search, email, role);
+    }
     if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, { email, role, can_peek: canPeek(role), peek_max: PEEK_MAX(), title: config.title || 'RabbitMQ Hub', locale: config.locale || 'en' });
     if (req.method === 'GET' && (url.pathname === '/api' || url.pathname === '/api/')) return send(res, 200, API_INDEX);
     if (req.method === 'GET' && url.pathname === '/api/health') {

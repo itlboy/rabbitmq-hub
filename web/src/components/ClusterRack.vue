@@ -38,6 +38,9 @@ function unit(n) {
       <span class="led" :class="!cluster.ok && 'off'"></span>
       <h3 class="m-0 truncate text-[14px] font-bold tracking-tight">{{ cluster.name }}</h3>
       <span class="ml-auto whitespace-nowrap font-mono text-[11px] text-ink-3">{{ cluster.version ? 'v' + cluster.version : '' }}</span>
+      <a v-if="cluster.ui_url" :href="cluster.ui_url" target="_blank" rel="noopener noreferrer" @click.stop @keydown.enter.stop :title="t('open_ui_tip')" :aria-label="t('open_ui')"
+        class="-my-1 -mr-1 inline-flex rounded p-1 text-ink-3 transition-colors hover:bg-panel hover:text-ink">
+        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></svg></a>
     </header>
 
     <div class="flex flex-1 flex-col gap-3 p-3.5">

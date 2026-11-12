@@ -10,6 +10,7 @@ A tiny, dependency-free dashboard to watch several RabbitMQ clusters from one pa
 - **Read messages** — peek at up to 10 messages (requeued, logged); admins and `peekers` only, can be disabled per cluster.
 - **Deep links** — `#cluster` or `#cluster/queue`; the health badge jumps to the first cluster that needs attention.
 - **A colour per cluster**, messages with no consumer flagged in red.
+- **Management UI without a password** — `ui_proxy: true` serves the stock RabbitMQ management UI at `/m/<cluster>/` through the hub: users only need Cloudflare Access, the hub adds the RabbitMQ credentials server-side (they never reach the browser). Admins get full control, everyone else read-only; every change is posted to the audit webhook. Or just link out with `ui_url`.
 - **Node details** — click a node for memory / disk / CPU load explained in plain words (what happens at each limit).
 - **Health endpoint** — `GET /api/health` returns `ok | degraded | down` for the whole system (HTTP 200 / 503), ready for any monitor.
 - **For AI agents** — a read-only **MCP server** at `/mcp` and a JSON API (`GET /api` lists it), authenticated with a Cloudflare Access service token.
@@ -31,6 +32,17 @@ The hub is designed to sit behind **[Cloudflare Access](https://developers.cloud
 
 Bind the hub to localhost and expose it only through a Cloudflare Tunnel, so the Access check cannot be bypassed.
 
+## Management UI through the hub (`ui_proxy`)
+
+With `"ui_proxy": true` on a cluster, `https://<hub>/m/<id>/` is that cluster's own RabbitMQ management UI, proxied by the hub:
+
+- **One login** — the Cloudflare Access session. The page is seeded with a placeholder credential; the hub replaces it with
+  `RABBITMQ_USER/PASS` on every request, so the real password is never sent to the browser.
+- **Roles** — admins: everything the management UI can do. Peekers / viewers: read-only (`GET`/`HEAD`), and no `/api/definitions`
+  (it contains password hashes). Writes must come from `public_origin`.
+- **Audit** — every successful write made through it (`PUT`/`POST`/`DELETE`, except UI login/logout) is posted to the audit webhook with the user's email.
+- The management UI is served from the hub's own origin, so only enable it for clusters whose UI you trust.
+
 ## Configuration
 
 Copy `config.example.json` to `config.json`:
@@ -45,7 +57,7 @@ Copy `config.example.json` to `config.json`:
 | `users.admins` / `users.peekers` / `users.viewers` | Emails or `*@domain`. Admins: view + read messages + purge. Peekers: view + read messages. Viewers: view only |
 | `peek_max` | Max messages per read (default 10, max 50) |
 | `service_tokens` | `{ "<Access service token client id>": "viewer" \| "peeker" \| "admin" }` — machine access (AI agents, monitors). Unlisted tokens get 403 |
-| `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `allow_peek` (default true), `hide_queue_pattern` (regex, optional), `warn_messages` (default 1000) / `warn_threshold` (`{queue: n}`) for row highlighting, `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional) |
+| `clusters[]` | `id`, `name`, `role` (free text), `api` (management API base URL), `expected_nodes`, `allow_purge`, `allow_peek` (default true), `hide_queue_pattern` (regex, optional), `warn_messages` (default 1000) / `warn_threshold` (`{queue: n}`) for row highlighting, `forwards_to` (id of the cluster its shovels feed — draws the flow strip, optional), `ui_proxy` (serve its management UI at `/m/<id>/` through the hub — see below), `ui_url` (plain link to the cluster's own management UI instead, http/https) — either adds a *Management ↗* button |
 
 Environment variables:
 
