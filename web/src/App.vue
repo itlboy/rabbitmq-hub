@@ -16,6 +16,8 @@ const REFRESH = 10;
 const me = ref(null);
 const fatal = ref('');
 const clusters = ref([]);
+// cột theo số cluster (tối đa 4) — 3 cluster không chừa ô trống; class viết đủ để Tailwind giữ lại
+const rackCols = computed(() => ({ 1: '', 2: 'sm:grid-cols-2', 3: 'sm:grid-cols-2 xl:grid-cols-3' })[clusters.value.length] ?? 'sm:grid-cols-2 xl:grid-cols-4');
 const clustersError = ref('');
 const selectedId = ref(store.get('hub.sel'));
 const queues = ref([]);
@@ -207,7 +209,7 @@ onBeforeUnmount(() => { clearInterval(timer); window.removeEventListener('hashch
         </section>
         <Spinner :label="t('connecting_clusters')" />
       </template>
-      <section class="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Clusters">
+      <section class="grid grid-cols-1 items-stretch gap-3" :class="rackCols" aria-label="Clusters">
         <ClusterRack v-for="(c, i) in clusters" :key="c.id" :cluster="c" :index="i" :range-label="rangeLabel" :color="colors[c.id]" :selected="c.id === selectedId" @pick="pick(c.id)" @nodes="showNodes(c.id)" />
       </section>
       <QueueTable :cluster="selected" :color="colors[selectedId]" :queues="queues" :loading="queuesLoading" :can-purge="canPurge" :error="queuesError" :tab="tab" :shovels="shovels"
